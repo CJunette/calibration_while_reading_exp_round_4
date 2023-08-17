@@ -281,9 +281,9 @@ def _save_fine_tune_data(token_type):
     if not os.path.exists(validation_data_path):
         os.makedirs(os.path.dirname(validation_data_path))
 
-    training_data_name = f"{training_data_path}{token_type}_training_data_ver_{configs.fine_tune_ver}.jsonl"
-    testing_data_name = f"{testing_data_path}{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
-    validation_data_name = f"{validation_data_path}{token_type}_validation_data_ver_{configs.fine_tune_ver}.jsonl"
+    training_data_name = f"{training_data_path}{token_type}_training_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
+    testing_data_name = f"{testing_data_path}{token_type}_testing_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_name = f"{validation_data_path}{token_type}_validation_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
 
     save_data(training_data_name, training_prompt_list, training_completion_list)
     save_data(testing_data_name, testing_prompt_list, test_completion_list)
@@ -341,14 +341,14 @@ def get_fine_tune_prediction(test_data_list, validation_data_list, test_data_ind
 
 
 def save_gpt_fine_tune_prediction(token_type):
-    test_data_file_path = f"data/fine_tune/testing_data/{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
+    test_data_file_path = f"data/fine_tune/testing_data/{token_type}_testing_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
     test_data_list = []
     with open(test_data_file_path, "r") as f:
         for line in f:
             entry = json.loads(line)
             test_data_list.append(entry)
 
-    validation_data_file_path = f"data/fine_tune/validation_data/{token_type}_validation_data_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_file_path = f"data/fine_tune/validation_data/{token_type}_validation_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
     validation_data_list = []
     with open(validation_data_file_path, "r") as f:
         for line in f:
@@ -391,7 +391,7 @@ def save_gpt_fine_tune_prediction(token_type):
     save_path = f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    save_name = f"{save_path}{token_type}_result_005.csv"
+    save_name = f"{save_path}{configs.round}_{token_type}_result_005.csv"
     df.to_csv(save_name, index=False, encoding="utf-8_sig")
 
 
@@ -403,7 +403,7 @@ def change_quotation_mark(df):
 
 
 def read_and_visualize_gpt_prediction(token_type):
-    df = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/{token_type}_result_001.csv", encoding="utf-8_sig")
+    df = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/{configs.round}_{token_type}_result_001.csv", encoding="utf-8_sig")
     change_quotation_mark(df)
 
     fig, axes = plt.subplots(2, 1)
@@ -522,8 +522,8 @@ def save_fine_tune_data(token_type="fine"):
 
 
 def test_gpt_fine_tune_prediction(token_type="fine"):
-    save_gpt_fine_tune_prediction(token_type) # 保存gpt预测结果。
-    check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
+    # save_gpt_fine_tune_prediction(token_type) # 保存gpt预测结果。
+    # check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
     read_and_visualize_gpt_prediction(token_type) # 根据某次返回结果，检查其与实际结果是否接近。
 
 

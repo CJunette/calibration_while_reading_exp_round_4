@@ -1,4 +1,4 @@
-round = "round_4"
+round = "round_1"
 device = "tobii"
 
 text_top = 240
@@ -11,4 +11,7 @@ fine_tune_training_num = 25
 # fine_tune_model_name = "curie:ft-pcg-2023-08-16-16-36-16"
 fine_tune_model_name = "curie:ft-pcg-2023-08-17-05-02-34"
 
-fine_tune_ver = 1
+fine_tune_ver = 2
+
+temp_token_debug_num = 107
+
