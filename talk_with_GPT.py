@@ -1,5 +1,7 @@
 import json
 import os.path
+from multiprocessing import Pool
+
 from matplotlib.patches import Rectangle, Ellipse, Circle
 import numpy as np
 import openai
@@ -278,12 +280,51 @@ def save_fine_tune_data(token_type="fine"):
     # 然后设置代理。
     # $proxy='http://127.0.0.1:10809';$ENV:HTTP_PROXY=$proxy;$ENV:HTTPS_PROXY=$proxy
     # 然后按openai官网的提示继续创建模型即可。
+    # openai api fine_tunes.create -t <TRAIN_FILE_ID_OR_PATH> -m <BASE_MODEL>
+    # 以上内容的网页参考：https://platform.openai.com/docs/guides/fine-tuning。
 
 
-def save_gpt_prediction():
+def get_gpt_prediction(test_data_list, validation_data_list, test_data_index):
     set_openai()
     start_using_IDE()
 
+    while True:
+        test_prompt_str = test_data_list[test_data_index]["prompt"]
+        test_prompt = json.loads(test_prompt_str[:-7])
+        test_completion_str = test_data_list[test_data_index]["completion"][:-7]
+        test_completion = json.loads(test_completion_str)
+
+        models = openai.Model.list()
+
+        response = openai.Completion.create(
+            model=configs.fine_tune_model_name,
+            prompt=test_prompt_str,
+            max_tokens=100,
+        )
+
+        print(test_data_index, len(test_data_list))
+
+        validation_completion_str = validation_data_list[test_data_index]["completion"][:-7]
+        validation_completion = json.loads(validation_completion_str)
+
+        gpt_completion_str = response["choices"][0]["text"].split("\n\n###\n\n")[0]
+
+        try:
+            gpt_completion = json.loads(gpt_completion_str)
+            # 保证所需数值都在返回的结果中。
+            if "relative_density_mean" in gpt_completion and "relative_density_std" in gpt_completion and "density_mean" in gpt_completion and "density_std" in gpt_completion:
+                # 保证不会出现过于夸张的数值。
+                if gpt_completion["density_mean"] < 200 and gpt_completion["density_std"] < 200:
+                    return test_prompt, test_completion, gpt_completion, validation_completion
+                else:
+                    print(f"error in {test_data_index}, {'wrong mean or std'}, {gpt_completion_str}")
+            else:
+                print(f"error in {test_data_index}, {'information loss'}, {gpt_completion_str}")
+        except Exception as e:
+            print(f"error in {test_data_index}, {e}, {gpt_completion_str}")
+
+
+def save_gpt_fine_tune_prediction():
     test_data_file_path = f"data/fine_tune/testing_data/testing_data_ver_{configs.fine_tune_ver}.jsonl"
     test_data_list = []
     with open(test_data_file_path, "r") as f:
@@ -303,37 +344,21 @@ def save_gpt_prediction():
     gpt_completion_list = []
     validation_completion_list = []
     test_data_index = 0
+
+    args_list = []
     while test_data_index < len(test_data_list):
-        test_prompt_str = test_data_list[test_data_index]["prompt"]
-        test_prompt = json.loads(test_prompt_str[:-7])
-        test_completion_str = test_data_list[test_data_index]["completion"][:-7]
-        test_completion = json.loads(test_completion_str)
+        args_list.append((test_data_list, validation_data_list, test_data_index))
+        test_data_index += 1
 
-        response = openai.Completion.create(
-            model=configs.fine_tune_model_name,
-            prompt=test_prompt_str,
-            max_tokens=75,
-        )
+    with Pool(8) as p:
+        result_list = p.starmap(get_gpt_prediction, args_list)
 
-        print(test_data_index, len(test_data_list))
-
-        validation_completion_str = validation_data_list[test_data_index]["completion"][:-7]
-        validation_completion = json.loads(validation_completion_str)
-
-        gpt_completion_str = response["choices"][0]["text"].split("\n\n###\n\n")[0]
-
-        try:
-            gpt_completion = json.loads(gpt_completion_str)
-            if "relative_density_mean" in gpt_completion and "relative_density_std" in gpt_completion:
-                prompt_list.append(test_prompt)
-                test_completion_list.append(test_completion)
-                gpt_completion_list.append(gpt_completion)
-                validation_completion_list.append(validation_completion)
-                test_data_index += 1
-            else:
-                print(f"error in {test_data_index}, {'information loss'}, {gpt_completion_str}")
-        except Exception as e:
-            print(f"error in {test_data_index}, {e}, {gpt_completion_str}")
+    for result_index in range(len(result_list)):
+        test_prompt, test_completion, gpt_completion, validation_completion = result_list[result_index]
+        prompt_list.append(test_prompt)
+        test_completion_list.append(test_completion)
+        gpt_completion_list.append(gpt_completion)
+        validation_completion_list.append(validation_completion)
 
     df = pd.DataFrame({
         "prompt": prompt_list,
@@ -347,8 +372,11 @@ def save_gpt_prediction():
     df["gpt_completion"].apply(json.dumps)
     df["validation_completion"].apply(json.dumps)
 
-    save_path = f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/result_003.csv"
-    df.to_csv(save_path, index=False, encoding="utf-8_sig")
+    save_path = f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/"
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    save_name = f"{save_path}result_005.csv"
+    df.to_csv(save_name, index=False, encoding="utf-8_sig")
 
 
 def change_quotation_mark(df):
@@ -362,85 +390,121 @@ def read_and_visualize_gpt_prediction():
     df = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/result_001.csv", encoding="utf-8_sig")
     change_quotation_mark(df)
 
-    fig, ax = plt.subplots()
-    ax.set_xlim(-1, df.shape[0] + 1)
-    ax.set_ylim(-0.0075, 0.015)
+    fig, axes = plt.subplots(2, 1)
+    axes[0].set_xlim(-1, df.shape[0] + 1)
+    axes[0].set_ylim(-0.0075, 0.015)
+    axes[1].set_xlim(-1, df.shape[0] + 1)
+    axes[1].set_ylim(-1, 100)
     plt.rcParams['font.sans-serif'] = ['SimSun']
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.1, hspace=0.1)
     for token_index in range(df.shape[0]):
         token = df["prompt"][token_index]["token"]
-        test_prediction_mean = df["test_completion"][token_index]["relative_density_mean"]
-        test_prediction_std = df["test_completion"][token_index]["relative_density_std"]
-        gpt_prediction_mean = df["gpt_completion"][token_index]["relative_density_mean"]
-        gpt_prediction_std = df["gpt_completion"][token_index]["relative_density_std"]
-        validation_prediction_mean = df["validation_completion"][token_index]["relative_density_mean"]
-        validation_prediction_std = df["validation_completion"][token_index]["relative_density_std"]
+        test_relative_density_mean = df["test_completion"][token_index]["relative_density_mean"]
+        test_relative_density_std = df["test_completion"][token_index]["relative_density_std"]
+        gpt_relative_density_mean = df["gpt_completion"][token_index]["relative_density_mean"]
+        gpt_relative_density_std = df["gpt_completion"][token_index]["relative_density_std"]
+        validation_relative_density_mean = df["validation_completion"][token_index]["relative_density_mean"]
+        validation_relative_density_std = df["validation_completion"][token_index]["relative_density_std"]
+        gpt_relative_density_rect = Rectangle((token_index, gpt_relative_density_mean - gpt_relative_density_std), 0.03, gpt_relative_density_std * 2, color="red", alpha=0.5)
+        validation_relative_density_rect = Rectangle((token_index, validation_relative_density_mean - validation_relative_density_std), 0.02, validation_relative_density_std * 2, color="green", alpha=0.5)
+        axes[0].scatter(token_index, test_relative_density_mean, s=5, color="blue")
+        axes[0].add_patch(gpt_relative_density_rect)
+        axes[0].add_patch(validation_relative_density_rect)
+        axes[0].text(token_index, -0.005, token, ha="center", va="center", fontsize=8)
 
-        # add a sphere for test_prediction_mean
-        gpt_rect = Rectangle((token_index, gpt_prediction_mean - gpt_prediction_std), 0.03, gpt_prediction_std * 2, color="red", alpha=0.5)
-        validation_rect = Rectangle((token_index, validation_prediction_mean - validation_prediction_std), 0.02, validation_prediction_std * 2, color="green", alpha=0.5)
-
-        ax.scatter(token_index, test_prediction_mean, s=5, color="blue")
-        ax.add_patch(gpt_rect)
-        ax.add_patch(validation_rect)
-        ax.text(token_index, -0.005, token, ha="center", va="center", fontsize=8)
+        test_density_mean = df["test_completion"][token_index]["density_mean"]
+        test_density_std = df["test_completion"][token_index]["density_std"]
+        gpt_density_mean = df["gpt_completion"][token_index]["density_mean"]
+        gpt_density_std = df["gpt_completion"][token_index]["density_std"]
+        validation_density_mean = df["validation_completion"][token_index]["density_mean"]
+        validation_density_std = df["validation_completion"][token_index]["density_std"]
+        gpt_density_rect = Rectangle((token_index, gpt_density_mean - gpt_density_std), 0.03, gpt_density_std * 2, color="red", alpha=0.5)
+        validation_density_rect = Rectangle((token_index, validation_density_mean - validation_density_std), 0.02, validation_density_std * 2, color="green", alpha=0.5)
+        axes[1].scatter(token_index, test_density_mean, s=5, color="blue")
+        axes[1].add_patch(gpt_density_rect)
+        axes[1].add_patch(validation_density_rect)
+        axes[1].text(token_index, -0.5, token, ha="center", va="center", fontsize=8)
 
     plt.show()
 
 
-def check_gpt_prediction_stability():
-    df_1 = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/result_001.csv", encoding="utf-8_sig")
-    df_2 = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/result_002.csv", encoding="utf-8_sig")
-    df_3 = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/result_003.csv", encoding="utf-8_sig")
+def check_gpt_fine_tune_prediction_stability():
+    df_list = []
+    result_file_path = f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/"
+    file_list = os.listdir(result_file_path)
+    for file_index in range(len(file_list)):
+        file_name = f"{result_file_path}{file_list[file_index]}"
+        if file_name.endswith(".csv"):
+            df = pd.read_csv(f"{file_name}", encoding="utf-8_sig")
+            change_quotation_mark(df)
+            df_list.append(df)
 
-    change_quotation_mark(df_1)
-    change_quotation_mark(df_2)
-    change_quotation_mark(df_3)
+    color_list = ["red", "blue", "green", "yellow", "black", "purple", "orange", "pink", "gray", "brown", "cyan", "magenta"]
 
-    df_list = [df_1, df_2, df_3]
-    color_list = ["red", "blue", "green"]
-
-    mean_std_list = []
-    std_std_list = []
-    for token_index in range(df_1.shape[0]):
-        mean_list = []
-        std_list = []
+    relative_density_mean_std_list = []
+    relative_density_std_std_list = []
+    density_mean_std_list = []
+    density_std_std_list = []
+    for token_index in range(df_list[0].shape[0]):
+        relative_density_mean_list = []
+        relative_density_std_list = []
+        density_mean_list = []
+        density_std_list = []
         for file_index in range(len(df_list)):
-            gpt_prediction_mean = df_list[file_index]["gpt_completion"][token_index]["relative_density_mean"]
-            gpt_prediction_std = df_list[file_index]["gpt_completion"][token_index]["relative_density_std"]
+            gpt_relative_density_mean = df_list[file_index]["gpt_completion"][token_index]["relative_density_mean"]
+            gpt_relative_density_std = df_list[file_index]["gpt_completion"][token_index]["relative_density_std"]
+            gpt_density_mean = df_list[file_index]["gpt_completion"][token_index]["density_mean"]
+            gpt_density_std = df_list[file_index]["gpt_completion"][token_index]["density_std"]
 
-            mean_list.append(gpt_prediction_mean)
-            std_list.append(gpt_prediction_std)
-        mean_std_list.append(np.std(mean_list))
-        std_std_list.append(np.std(std_list))
-    print(np.mean(mean_std_list))
-    print(np.mean(std_std_list))
+            relative_density_mean_list.append(gpt_relative_density_mean)
+            relative_density_std_list.append(gpt_relative_density_std)
+            density_mean_list.append(gpt_density_mean)
+            density_std_list.append(gpt_density_std)
 
-    fig, ax = plt.subplots()
-    ax.set_xlim(-1, df_1.shape[0] + 1)
-    ax.set_ylim(-0.0075, 0.015)
+        relative_density_mean_std_list.append(np.std(relative_density_mean_list))
+        relative_density_std_std_list.append(np.std(relative_density_std_list))
+        density_mean_std_list.append(np.std(density_mean_list))
+        density_std_std_list.append(np.std(density_std_list))
+
+    print("std of relative density mean", np.mean(relative_density_mean_std_list))
+    print("std of relative density std", np.mean(relative_density_std_std_list))
+    print("std of density mean", np.mean(density_mean_std_list))
+    print("std of density std", np.mean(density_std_std_list))
+
+    # 修改上述代码，创建左右2个图像，一边显示relative_density，一边显示density。
+    fig, axes = plt.subplots(2, 1)
+    axes[0].set_xlim(-1, df_list[0].shape[0] + 1)
+    axes[0].set_ylim(-0.0075, 0.015)
+    axes[1].set_xlim(-1, df_list[0].shape[0] + 1)
+    axes[1].set_ylim(-1, 100)
     plt.rcParams['font.sans-serif'] = ['SimSun']
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95, wspace=0.1, hspace=0.1)
     for df_index in range(len(df_list)):
         df = df_list[df_index]
         for token_index in range(df.shape[0]):
             token = df["prompt"][token_index]["token"]
-            gpt_prediction_mean = df["gpt_completion"][token_index]["relative_density_mean"]
-            gpt_prediction_std = df["gpt_completion"][token_index]["relative_density_std"]
-
-            gpt_rect = Rectangle((token_index, gpt_prediction_mean - gpt_prediction_std), 0.03, gpt_prediction_std * 2, color=color_list[df_index], alpha=0.5)
-            ax.add_patch(gpt_rect)
-            ax.text(token_index, -0.005, token, ha="center", va="center", fontsize=8)
+            gpt_relative_density_mean = df["gpt_completion"][token_index]["relative_density_mean"]
+            gpt_relative_density_std = df["gpt_completion"][token_index]["relative_density_std"]
+            get_density_mean = df["gpt_completion"][token_index]["density_mean"]
+            get_density_std = df["gpt_completion"][token_index]["density_std"]
+            gpt_relative_density_rect = Rectangle((token_index, gpt_relative_density_mean - gpt_relative_density_std), 0.03, gpt_relative_density_std * 2, color=color_list[df_index], alpha=0.1)
+            gpt_density_rect = Rectangle((token_index, get_density_mean - get_density_std), 0.02, get_density_std * 2, color=color_list[df_index], alpha=0.1)
+            axes[0].add_patch(gpt_relative_density_rect)
+            axes[1].add_patch(gpt_density_rect)
+            axes[0].text(token_index, -0.005, token, ha="center", va="center", fontsize=8)
+            axes[1].text(token_index, -0.1, token, ha="center", va="center", fontsize=8)
 
     plt.show()
 
 
-def test_gpt_prediction():
-    # save_gpt_prediction()
-    check_gpt_prediction_stability()
-    # read_and_visualize_gpt_prediction()
+def test_gpt_fine_tune_prediction():
+    # save_gpt_fine_tune_prediction() # 保存gpt预测结果。
+    # check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
+    read_and_visualize_gpt_prediction() # 根据某次返回结果，检查其与实际结果是否接近。
 
 
 def main():
-    test_gpt_prediction()
+    test_gpt_fine_tune_prediction()
 
 
 if __name__ == "__main__":
