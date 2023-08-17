@@ -206,13 +206,15 @@ def prepare_text_for_fine_tune(df, bool_training=False):
             row = df_para_id.iloc[token_index]["row"][0]
 
             prompt_dict = {
-                "full_text": full_text,
                 "token": token,
                 "token_index": int(token_index),
-                "distance_to_row_start": int(distance_from_row_start),
-                "distance_to_row_end": int(distance_from_row_end),
+                "backward": backward,
+                "forward": forward,
                 "row": int(row),
-                "split": int(split)
+                "split": int(split),
+                "anterior_passage": anterior_passage,
+                "distance_from_row_end": int(distance_from_row_end),
+                "distance_from_row_start": int(distance_from_row_start)
             }
             prompt_list.append(prompt_dict)
 
@@ -220,10 +222,13 @@ def prepare_text_for_fine_tune(df, bool_training=False):
             # 将relative_density转为str，每个数据保留3位有效数字
             relative_density_mean = np.mean(relative_density)
             relative_density_std = np.std(relative_density)
-
+            density_mean = np.mean(density)
+            density_std = np.std(density)
             completion_dict = {
                 "relative_density_mean": relative_density_mean,
-                "relative_density_std": relative_density_std
+                "relative_density_std": relative_density_std,
+                "density_mean": density_mean,
+                "density_std": density_std
             }
             completion_list.append(completion_dict)
 
@@ -248,19 +253,23 @@ def save_fine_tune_data(token_type="fine"):
     testing_prompt_list, test_completion_list = prepare_text_for_fine_tune(df_density_for_testing, bool_training=False)
     validation_prompt_list, validation_completion_list = prepare_text_for_fine_tune(df_training_static, bool_training=False)
 
-    training_data_path = "data/fine_tune/training_data/training_data.jsonl"
+    training_data_path = "data/fine_tune/training_data/"
     if not os.path.exists(training_data_path):
         os.makedirs(os.path.dirname(training_data_path))
-    testing_data_path = "data/fine_tune/testing_data/testing_data.jsonl"
+    testing_data_path = "data/fine_tune/testing_data/"
     if not os.path.exists(testing_data_path):
         os.makedirs(os.path.dirname(testing_data_path))
-    validation_data_path = "data/fine_tune/validation_data/validation_data.jsonl"
+    validation_data_path = "data/fine_tune/validation_data/"
     if not os.path.exists(validation_data_path):
         os.makedirs(os.path.dirname(validation_data_path))
 
-    save_data(training_data_path, training_prompt_list, training_completion_list)
-    save_data(testing_data_path, testing_prompt_list, test_completion_list)
-    save_data(validation_data_path, validation_prompt_list, validation_completion_list)
+    training_data_name = f"{training_data_path}training_data_ver_{configs.fine_tune_ver}.jsonl"
+    testing_data_name = f"{testing_data_path}testing_data_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_name = f"{validation_data_path}validation_data_ver_{configs.fine_tune_ver}.jsonl"
+
+    save_data(training_data_name, training_prompt_list, training_completion_list)
+    save_data(testing_data_name, testing_prompt_list, test_completion_list)
+    save_data(validation_data_name, validation_prompt_list, validation_completion_list)
     # f.write(data_str + "\n")
     # 执行完成后，需要在terminal中执行以下命令，用openai自带的检验算法检验文档是否符合训练数据的要求。
     # openai tools fine_tunes.prepare_data -f <training_file_path>
@@ -275,14 +284,14 @@ def save_gpt_prediction():
     set_openai()
     start_using_IDE()
 
-    test_data_file_path = "data/fine_tune/testing_data/testing_data.jsonl"
+    test_data_file_path = f"data/fine_tune/testing_data/testing_data_ver_{configs.fine_tune_ver}.jsonl"
     test_data_list = []
     with open(test_data_file_path, "r") as f:
         for line in f:
             entry = json.loads(line)
             test_data_list.append(entry)
 
-    validation_data_file_path = "data/fine_tune/validation_data/validation_data.jsonl"
+    validation_data_file_path = f"data/fine_tune/validation_data/validation_data_ver_{configs.fine_tune_ver}.jsonl"
     validation_data_list = []
     with open(validation_data_file_path, "r") as f:
         for line in f:

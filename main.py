@@ -29,7 +29,7 @@ if __name__ == '__main__':
     # get_token_info()
     # get_density()
 
-    # talk_with_GPT.save_fine_tune_data()
-    talk_with_GPT.test_gpt_prediction()
+    talk_with_GPT.save_fine_tune_data()
+    # talk_with_GPT.test_gpt_prediction()
 
 
