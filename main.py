@@ -30,6 +30,7 @@ if __name__ == '__main__':
     # get_density()
 
     # talk_with_GPT.save_fine_tune_data()
-    talk_with_GPT.test_gpt_fine_tune_prediction()
+    # talk_with_GPT.test_gpt_fine_tune_prediction()
 
+    talk_with_GPT.get_gpt_prediction()
 

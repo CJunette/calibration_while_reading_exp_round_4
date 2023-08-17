@@ -36,6 +36,10 @@ def get_gpt_embedding(target_str):
     return np.array(response_value)
 
 
+'''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
+'''GPT API相关'''
+
+
 def prepare_data(token_type):
     token_density_list = read_files.read_token_density_of_token_type(token_type)
     # TODO 之后这里的training和testing的数量可能会发生调整，后续代码也需要修改。
@@ -55,38 +59,6 @@ def prepare_data(token_type):
     return df_density_for_training, df_density_for_testing, df_training_static
 
 
-def prepare_training_text_for_gpt(static_training_df):
-    sorted_text = read_files.read_sorted_text()
-    df_grouped_by_para_id = static_training_df.groupby("para_id")
-
-    str_list = []
-
-    for para_id, df_para_id in df_grouped_by_para_id:
-        full_text = sorted_text[para_id]["text"]
-        # 部分full_text最后可能会是一个\n，需要将它去掉
-        if full_text[-1] == "\n":
-            full_text = full_text[:-1]
-        token_str_list = []
-        for token_index in range(df_para_id.shape[0]):
-            token = df_para_id.iloc[token_index]["tokens"]
-            forward = df_para_id.iloc[token_index]["forward"]
-            backward = df_para_id.iloc[token_index]["backward"]
-            anterior_passage = df_para_id.iloc[token_index]["anterior_passage"]
-            density = df_para_id.iloc[token_index]["density"]
-            relative_density = df_para_id.iloc[token_index]["relative_density"]
-            # 将relative_density转为str，每个数据保留5位有效数字
-            relative_density = [int(density * 1e7)/1e7 for density in relative_density]
-            # relative_density_str = "[" + ", ".join([f"{float(x): .7f}" for x in relative_density]) + "]"
-            # token_str = "{" + f"'token': '{token}', 'token_index': {token_index}, 'backward': {backward}, 'forward': {forward}, 'anterior_passage': '{anterior_passage}', 'relative_density': {relative_density}" + "}"
-            token_str = "{" + f"'token': '{token}', 'token_index': {token_index}, 'backward': {backward}, 'forward': {forward}, 'relative_density': {relative_density}" + "}"
-            token_str_list.append(token_str)
-
-        token_list_str = "[" + ", \n".join(token_str_list) + "]"
-        para_str = "{\n" + f"'full_text': \n'{full_text}',\n 'tokens_and_info': \n'{token_list_str}'" + "\n}"
-        str_list.append(para_str)
-    return str_list
-
-
 def prepare_text_for_gpt(df, bool_training=False):
     sorted_text = read_files.read_sorted_text()
     df_grouped_by_para_id = df.groupby("para_id")
@@ -95,10 +67,16 @@ def prepare_text_for_gpt(df, bool_training=False):
 
     for para_id, df_para_id in df_grouped_by_para_id:
         full_text = sorted_text[para_id]["text"]
-        # 部分full_text最后可能会是一个\n，需要将它去掉
-        if full_text[-1] == "\n":
-            full_text = full_text[:-1]
-        token_str_list = []
+        full_text = full_text.replace("\n", "")
+
+        token_list = []
+        token_index_list = []
+        distance_start_list = []
+        distance_end_list = []
+        split_list = []
+        relative_density_mean_list = []
+        relative_density_std_list = []
+
         for token_index in range(df_para_id.shape[0]):
             token = df_para_id.iloc[token_index]["tokens"]
             forward = df_para_id.iloc[token_index]["forward"]
@@ -109,24 +87,49 @@ def prepare_text_for_gpt(df, bool_training=False):
             distance_from_row_start = df_para_id.iloc[token_index]["start_dist"]
             distance_from_row_end = df_para_id.iloc[token_index]["end_dist"]
             split = df_para_id.iloc[token_index]["split"]
+            relative_density = df_para_id.iloc[token_index]["relative_density"]
 
-            if bool_training:
-                relative_density = df_para_id.iloc[token_index]["relative_density"]
-                # 将relative_density转为str，每个数据保留3位有效数字
-                relative_density = [int(density * 1e5) / 1e3 for density in relative_density]
-                token_str = "{" + f"'token': '{token}', 'token_index': {token_index}, 'distance_to_start': {distance_from_row_start}, 'distance_to_end': {distance_from_row_end}, 'split': {split}, 'relative_density': {relative_density}" + "}"
-            else:
-                # token_str = "{" + f"'token': '{token}', 'token_index': {token_index}, 'backward': {backward}, 'forward': {forward}, 'anterior_passage': '{anterior_passage}'" + "}"
-                token_str = "{" + f"'token': '{token}', 'token_index': {token_index}, 'distance_to_start': {distance_from_row_start}, 'distance_to_end': {distance_from_row_end}, 'split': {split}" + "}"
-            token_str_list.append(token_str)
+            token_list.append(token)
+            token_index_list.append(token_index)
+            distance_start_list.append(distance_from_row_start)
+            distance_end_list.append(distance_from_row_end)
+            split_list.append(split)
 
-        token_list_str = "[" + ", \n".join(token_str_list) + "]"
-        para_str = "{\n" + f"'full_text': \n'{full_text}',\n 'tokens_and_info': \n'{token_list_str}'" + "\n}"
+            relative_density_mean = int(np.mean(relative_density) * 1e6) / 1e4
+            relative_density_std = int(np.std(relative_density) * 1e6) / 1e4
+            relative_density_mean_list.append(relative_density_mean)
+            relative_density_std_list.append(relative_density_std)
+
+        token_str = "[" + ",".join(token_list) + "]"
+        token_index_str = "[" + ",".join([str(i) for i in token_index_list]) + "]"
+        distance_start_str = "[" + ",".join([str(i) for i in distance_start_list]) + "]"
+        distance_end_str = "[" + ",".join([str(i) for i in distance_end_list]) + "]"
+        split_str = "[" + ",".join([str(i) for i in split_list]) + "]"
+        relative_density_mean_str = "[" + ",".join([str(i) for i in relative_density_mean_list]) + "]"
+        relative_density_std_str = "[" + ",".join([str(i) for i in relative_density_std_list]) + "]"
+
+        if bool_training:
+            para_str = "{" + f"'full_text': {full_text}, " \
+                             f"'token_list': {token_str}, " \
+                             f"'token_index_list': {token_index_str}, " \
+                             f"'dist_start_list': {distance_start_str}, " \
+                             f"'dist_end_list': {distance_end_str}, " \
+                             f"'split_list': {split_str}, " \
+                             f"'rela_den_mean_list': {relative_density_mean_str}, " \
+                             f"'rela_den_std_list': {relative_density_std_str}" + "}"
+        else:
+            para_str = "{" + f"'full_text': {full_text}, " \
+                             f"'token_list': {token_str}, " \
+                             f"'token_index_list': {token_index_str}, " \
+                             f"'dist_start_list': {distance_start_str}, " \
+                             f"'dist_end_list': {distance_end_str}, " \
+                             f"'split_list': {split_str}" + "}"
+
         str_list.append(para_str)
     return str_list
 
 
-def test_gpt_prediction(token_type="fine"):
+def _save_gpt_prediction(token_type):
     start_using_IDE()
     set_openai()
 
@@ -135,45 +138,58 @@ def test_gpt_prediction(token_type="fine"):
     training_str_list = prepare_text_for_gpt(df_training_static, bool_training=True)
     testing_str_list = prepare_text_for_gpt(df_density_for_testing, bool_training=False)
 
-    training_text_num = 2
+    training_text_num = 3
     response = openai.ChatCompletion.create(
         model="gpt-4-0613",
         messages=[
             {"role": "system", "content": "你是一个分析文本分词与阅读眼动行为的专家。我会为你提供一系列文本的分词，及人在阅读时视线在上面停留的相对时间。"
-                                          "你需要学习分词与阅读时间之间存在的关系。之后我会向你提供一些分词，你需要根据你学到的知识给出你对不同分词的停留时间的预测。"
                                           "你需要主要从3个方面理解文本与阅读时间之间的关联：1. 该分词本身的特征（如难度、生僻程度）。2. 该分词与整篇文章所传达的核心意思之间的关联。3. 该分词与上下文之间的关联（即确定上文时，该分词是否容易预测）。"},
             {"role": "user", "content": "我会解释一下我将提供的数据格式及其含义。\n"
-                                        "我会向你提供一文本，以及该文本的分词（token）、分词序号（token_index）、到行首的距离（distance_to_start）、到行尾的距离（distance_to_end）、当前词是否被换行分割（split）、相对密度（relative_density）。\n"
-                                        # "我会向你提供一文本，以及该文本的分词（token）、前方的3个分词（backward）、后方的3个分词（forward）、相对密度（relative_density）。\n"
+                                        "我会向你提供一系列供学习的文本，以及该文本的分词（token_list）、分词序号（token_index_list）、到行首的距离（dist_start_list）、到行尾的距离（dist_end_list）、当前词是否被换行分割（split_list）、相对密度均值（rela_den_mean_list）、相对密度方差（rela_den_std_list）。\n"
+                                        "分词、分词序号、到行首的距离、到行尾的距离、当前词是否被换行分割、相对密度均值、相对密度方差都是等长的列表。\n"
                                         "其中分词代表文本全文中的一个分词。分词序号代表该序号在所有分词中的位置。"
-                                        "到行首的距离代表该分词到当前行的第一个分词的距离，如果该距离为0，则说明当前分词是改行的第一个分词。到行尾的距离代表该分词到当前行的最后一个分词的距离，如果该距离为0，则说明当前分词是改行的最后一个分词。"
+                                        "到行首的距离代表该分词到当前行的第一个分词的距离，如果该距离为0，则说明当前分词是改行的第一个分词。到行尾的距离代表该分词到当前行的最后一个分词的距离，如果该距离为0，则说明当前分词是该行的最后一个分词，也即下一个分词即需要换行。"
                                         "当前词是否被换行分割代表该分词是否被换行分割，导致一部分在行尾，另一部分在行首。如果该值为1，则说明该分词是被换行分割的。"
-                                        "相对密度（relative_density）是一个数组，代表的是不同用户的实现在该分词上停留的时间，相对密度越大代表停留时间越长。同一个文本中，同一用户的相对密度之和为100\n"
-                                        # "backward和forward中出现的<SOR>代表一行的开始位置，<EOR>代表一行的结束位置。anterior_passage中出现的<SOP>代表文章的开始位置。\n"
+                                        "相对密度（relative_density）代表的是不同用户的实现在该分词上停留的时间，相对密度越大代表停留时间越长。其均值和方差就是对样本数据的具体统计量。一篇文章的相对密度的均值应该接近100。\n"
                                         "你需要学习这些文本的分词与相对密度之间的关系，并将这个知识用于之后的任务。\n"
-                                        "具体的数据格式如下（我在示例中使用省略号代表数据未完全显示，你在之后的回复后不能这样做）：\n"
+                                        "注意，符号或空格也需要被统计。\n"
+                                        "学习文本的具体的数据格式如下：\n"
                                         "{'full_text': '【领英中国今日停服，包括移动端 App、桌面端网站和微信小程序等】    据IT之家消息，今年5月9日，职场社交平台领英宣布，求职App领英职场将于2023年8月9日起正式停服。'"
-                                        "'tokens_and_info':"
-                                        "[{'token': '【', 'token_index': 0, 'distance_to_start': 0, 'distance_to_end': 17, 'split': 0, 'density': [0, 0, 0, 0, 0]}, "
-                                        "{'token': '领英', 'token_index': 1, 'distance_to_start': 1, 'distance_to_end': 16, 'split': 0, 'density': [0.09, 0.378, 0.595, 0.201, 0.0]}, ...]"},
-            {"role": "assistant", "content": "好的，请给我用于学习的文本。"},
+                                        "'token_list': [【, 领英, ...], "
+                                        "'token_index_list': [0, 1, ...], "
+                                        "'dist_start_list': [0, 1, ...], "
+                                        "'dist_end_list': [17, 16, ...], "
+                                        "'split_list': [0, 0, ...], "
+                                        "'rela_den_mean_list': [0.0, 0.2532, ...], "
+                                        "'rela_den_std_list': [0.0, 0.2127, ...]}\n"
+                                        "你可以按以下思路学习。"
+                                        "第0个分词是'【'，它距离行首很近（0），距离行尾很远（17），它没有被换行分割，因为这是个标点，人们看他的可能性很小，因此。相对密度的均值应该很小，且标准差很小。\n"
+                                        "第1个分词是'领英'，它距离行首很近（1），距离行尾很远（16），它没有被换行分割，因为这是个行首的专有名词，与文章的主要意思关联可能很大，人们有较大可能会看它，因此。相对密度的均值应该较大，但因为不同人对这个词汇的了解程度不同，因此标准差应该也很大。\n"
+                                        "..."},
+
+            {"role": "user", "content": "之后我向你询问的文本中将不包含密度相关的信息。\n"
+                                        "举例。\n"
+                                        "如果我提供："
+                                        "{'full_text': '中国今日'"
+                                        "'tokens_and_info': "
+                                        "'token_list': [中国, 今日], "
+                                        "'token_index_list': [2, 3], "
+                                        "'dist_start_list': [2, 3], "
+                                        "'dist_end_list': [15, 14], "
+                                        "'split_list': [0, 0],}\n"
+                                        "你需要直接返回\n" 
+                                        "[{'token_list': [中国, 今日], 'token_index_list': [2, 3], 'rela_den_mean_list': [0.3152, 0.1719], 'rela_den_std_list': [0.1862, 0.08749]}\n"},
+            {"role": "assistant", "content": "好的，我已经理解了，现在可以给我更多的文本了供我学习。"},
             {"role": "user", "content": "\n".join(training_str_list[:training_text_num])},
-            {"role": "assistant", "content": "好的，我已经学习到了其中的联系。接下来你向我提供具体的文本及分词时，我会直接向你反馈你对于每个分词的相对停留时间的预测。\n"
-                                             "举例。\n"
-                                             "如果你提供："
-                                             "{'full_text': '【领英'"
-                                             "'tokens_and_info': "
-                                             "[{'token': '【', 'token_index': 0, 'distance_to_start': 0, 'distance_to_end': 17, 'split': 0}, "
-                                             "{'token': '领英', 'token_index': 1, 'distance_to_start': 1, 'distance_to_end': 16, 'split': 0}]"
-                                             "我会返回："
-                                             "[{'token': '【', 'token_index': 0, density: 0}, "
-                                             "{'token': '领英', 'token_index': 1, density: 0.02}]\n"
-                                             "你可以直接向我提供数据了。"},
-             {"role": "user", "content": f"{testing_str_list[training_text_num]}"}
+            {"role": "assistant", "content": "好的，我已经学会了如何分析，你随时可以向我提供新的文本，我会直接把密度估计返回给你。"},
+            {"role": "user", "content": f"{testing_str_list[25]}"}
         ])
     response_value = response["choices"][0]["message"]["content"].strip()
     print(response_value)
 
+
+'''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
+'''FINE TUNE相关'''
 
 def prepare_text_for_fine_tune(df, bool_training=False):
     sorted_text = read_files.read_sorted_text()
@@ -237,7 +253,7 @@ def prepare_text_for_fine_tune(df, bool_training=False):
     return prompt_list, completion_list
 
 
-def save_fine_tune_data(token_type="fine"):
+def _save_fine_tune_data(token_type):
     def save_data(data_path, prompt_list, completion_list):
         with open(data_path, "w") as f:
             for i in range(len(prompt_list)):
@@ -265,9 +281,9 @@ def save_fine_tune_data(token_type="fine"):
     if not os.path.exists(validation_data_path):
         os.makedirs(os.path.dirname(validation_data_path))
 
-    training_data_name = f"{training_data_path}training_data_ver_{configs.fine_tune_ver}.jsonl"
-    testing_data_name = f"{testing_data_path}testing_data_ver_{configs.fine_tune_ver}.jsonl"
-    validation_data_name = f"{validation_data_path}validation_data_ver_{configs.fine_tune_ver}.jsonl"
+    training_data_name = f"{training_data_path}{token_type}_training_data_ver_{configs.fine_tune_ver}.jsonl"
+    testing_data_name = f"{testing_data_path}{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_name = f"{validation_data_path}{token_type}_validation_data_ver_{configs.fine_tune_ver}.jsonl"
 
     save_data(training_data_name, training_prompt_list, training_completion_list)
     save_data(testing_data_name, testing_prompt_list, test_completion_list)
@@ -284,7 +300,7 @@ def save_fine_tune_data(token_type="fine"):
     # 以上内容的网页参考：https://platform.openai.com/docs/guides/fine-tuning。
 
 
-def get_gpt_prediction(test_data_list, validation_data_list, test_data_index):
+def get_fine_tune_prediction(test_data_list, validation_data_list, test_data_index):
     set_openai()
     start_using_IDE()
 
@@ -324,15 +340,15 @@ def get_gpt_prediction(test_data_list, validation_data_list, test_data_index):
             print(f"error in {test_data_index}, {e}, {gpt_completion_str}")
 
 
-def save_gpt_fine_tune_prediction():
-    test_data_file_path = f"data/fine_tune/testing_data/testing_data_ver_{configs.fine_tune_ver}.jsonl"
+def save_gpt_fine_tune_prediction(token_type):
+    test_data_file_path = f"data/fine_tune/testing_data/{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
     test_data_list = []
     with open(test_data_file_path, "r") as f:
         for line in f:
             entry = json.loads(line)
             test_data_list.append(entry)
 
-    validation_data_file_path = f"data/fine_tune/validation_data/validation_data_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_file_path = f"data/fine_tune/validation_data/{token_type}_validation_data_ver_{configs.fine_tune_ver}.jsonl"
     validation_data_list = []
     with open(validation_data_file_path, "r") as f:
         for line in f:
@@ -351,7 +367,7 @@ def save_gpt_fine_tune_prediction():
         test_data_index += 1
 
     with Pool(8) as p:
-        result_list = p.starmap(get_gpt_prediction, args_list)
+        result_list = p.starmap(get_fine_tune_prediction, args_list)
 
     for result_index in range(len(result_list)):
         test_prompt, test_completion, gpt_completion, validation_completion = result_list[result_index]
@@ -375,7 +391,7 @@ def save_gpt_fine_tune_prediction():
     save_path = f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    save_name = f"{save_path}result_005.csv"
+    save_name = f"{save_path}{token_type}_result_005.csv"
     df.to_csv(save_name, index=False, encoding="utf-8_sig")
 
 
@@ -386,8 +402,8 @@ def change_quotation_mark(df):
     df["validation_completion"] = df["validation_completion"].apply(read_files.change_single_quotation_to_double_quotation).apply(json.loads)
 
 
-def read_and_visualize_gpt_prediction():
-    df = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/result_001.csv", encoding="utf-8_sig")
+def read_and_visualize_gpt_prediction(token_type):
+    df = pd.read_csv(f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/{token_type}_result_001.csv", encoding="utf-8_sig")
     change_quotation_mark(df)
 
     fig, axes = plt.subplots(2, 1)
@@ -497,15 +513,20 @@ def check_gpt_fine_tune_prediction_stability():
     plt.show()
 
 
-def test_gpt_fine_tune_prediction():
-    # save_gpt_fine_tune_prediction() # 保存gpt预测结果。
-    # check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
-    read_and_visualize_gpt_prediction() # 根据某次返回结果，检查其与实际结果是否接近。
+'''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
+'''外界调用函数'''
 
 
-def main():
-    test_gpt_fine_tune_prediction()
+def save_fine_tune_data(token_type="fine"):
+    _save_fine_tune_data(token_type)
 
 
-if __name__ == "__main__":
-    main()
+def test_gpt_fine_tune_prediction(token_type="fine"):
+    save_gpt_fine_tune_prediction(token_type) # 保存gpt预测结果。
+    check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
+    read_and_visualize_gpt_prediction(token_type) # 根据某次返回结果，检查其与实际结果是否接近。
+
+
+def get_gpt_prediction(token_type="fine"):
+    _save_gpt_prediction(token_type)
+
