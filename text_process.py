@@ -36,12 +36,13 @@ def tokenize_exp_text_sorted():
         return combined_tokens
 
     def concatenate_space(tokens):
+        start_pattern = r"^[a-zA-Z0-9()\[\]/%.\-=]+"
+        end_pattern = r".*[a-zA-Z0-9()\[\]/%.\-=]+$"
         for row_index in range(len(tokens)):
             token_index = 0
             while token_index < len(tokens[row_index]):
-                if token_index == 101:
-                    print()
                 token = tokens[row_index][token_index]
+                # 以下是round_4时就有的规则。
                 if token.strip() == "":
                     while token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1].strip() == "":
                         tokens[row_index][token_index] += tokens[row_index][token_index + 1]
@@ -60,66 +61,85 @@ def tokenize_exp_text_sorted():
                         del tokens[row_index][token_index]
                     else:
                         token_index += 1
-                elif token == ")" and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == "(":
-                    # 排除一些特殊的情况，如将)(当成一个token。 # TODO 这种情况极为特殊，以后绝对不要再出现这样的把前后括号合并到一个text_unit中的情况！！
-                    token_1 = ")"
-                    token_2 = "("
-                    tokens[row_index][token_index] = token_1 + token_2
-                    del tokens[row_index][token_index + 1]
-                    token_index += 1
-                elif token == "=":
-                    # TODO 这种情况同样极为特殊，下次在遇到相关等号的词时需要谨慎处理。
-                    while token_index + 1 < len(tokens[row_index]) and bool(re.match('^[0-9 .亿万元]*$', tokens[row_index][token_index + 1])):
-                        tokens[row_index][token_index] += tokens[row_index][token_index + 1]
-                        del tokens[row_index][token_index + 1]
-                elif token.isdigit() and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == ".":
-                    # 这种情况相对比较常见，即数字后面出现.的情况。需要将两者合并成一个token。
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif bool(re.match('    [0-9]*$', token)) and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == ".":
-                    # 这种情况也极为特殊，但是是hanlp的错误分词导致的，它将\\和3分到了一个分词中。
-                    tokens[row_index][token_index + 1] = f"{tokens[row_index][token_index][-1]}."
-                    tokens[row_index][token_index] = tokens[row_index][token_index][:-1]
-                elif token[-1] == ")" and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == "-":
-                    # 这种情况是半角括号与-相邻，为了保证text_unit好处理，将两者合并。
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "-" and token_index + 1 < len(tokens[row_index]) and bool(re.match('^[a-zA-Z0-9]*$', tokens[row_index][token_index + 1][0])):
-                    # 这种情况较为常见，是-和英文或数字接在了一起。需要将两者合并成一个token。
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif bool(re.match('\([a-zA-Z]*', token)) and token_index + 1 < len(tokens[row_index]) and bool(re.match('^[a-zA-Z0-9)]*$', tokens[row_index][token_index + 1][0])):
-                    # 这种情况较为常见，是半角括号(和数字接在了一起。需要将两者合并成一个token。
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "(" and token_index + 1 < len(tokens[row_index]) and bool(re.match('^[a-zA-Z0-9]*$', tokens[row_index][token_index + 1])):
-                    token[row_index][token_index] += tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "/" and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == "Moss":
-                    # 罕见的情况，分词中出现斜杠，550w/Moss。
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "a" and tokens[row_index][token_index + 1] == "==" and tokens[row_index][token_index + 2] == "b":
-                    tokens[row_index][token_index] = "a==b"
-                    del tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "23.6" and tokens[row_index][token_index + 1] == "%" and tokens[row_index][token_index + 2] == "(" and tokens[row_index][token_index + 3] == "1231":
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1] + tokens[row_index][token_index + 2] + tokens[row_index][token_index + 3]
-                    del tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "23.6%" and tokens[row_index][token_index + 1] == "(" and tokens[row_index][token_index + 2] == "1231年":
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1] + "1231"
-                    del tokens[row_index][token_index + 1]
-                    tokens[row_index][token_index + 1] = "年"
-                elif token == "[" and tokens[row_index][token_index + 1].isdigit() and tokens[row_index][token_index + 2] == "]":
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1] + tokens[row_index][token_index + 2]
-                    del tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
-                elif token == "维生素C" and tokens[row_index][token_index + 1] == "-" and tokens[row_index][token_index + 2] == "WIKI":
-                    tokens[row_index][token_index] += tokens[row_index][token_index + 1] + tokens[row_index][token_index + 2]
-                    del tokens[row_index][token_index + 1]
-                    del tokens[row_index][token_index + 1]
+                elif token.startswith("    ") and len(token.strip()) > 0:
+                    # 这种情况也极为特殊，出现在round_1。我把它提出来了。是hanlp的错误分词导致的，它将\\和3分到了一个分词中。
+                    tokens[row_index].insert(token_index + 1, tokens[row_index][token_index][4:])
+                    tokens[row_index][token_index] = tokens[row_index][token_index][:4]
+                elif bool(re.match(start_pattern, token)) and token_index - 1 >= 0 and bool(re.match(end_pattern, tokens[row_index][token_index - 1])):
+                    this_match = re.search(start_pattern, token)
+                    this_str = token[this_match.start():this_match.end()]
+                    last_match = re.search(end_pattern, tokens[row_index][token_index - 1])
+                    last_str = tokens[row_index][token_index - 1][last_match.start():last_match.end()]
+                    if len(this_str) % 2 == 1 and len(last_str) % 2 == 1:
+                        tokens[row_index][token_index - 1] += token
+                        del tokens[row_index][token_index]
+                    elif abs(len(this_str) % 2 - len(last_str) % 2) == 1:
+                        tokens[row_index][token_index - 1] += token
+                        del tokens[row_index][token_index]
+                    else:
+                        token_index += 1
+
+                # elif token == ")" and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == "(":
+                #     # 排除一些特殊的情况，如将)(当成一个token。 # TODO 这种情况极为特殊，以后绝对不要再出现这样的把前后括号合并到一个text_unit中的情况！！
+                #     token_1 = ")"
+                #     token_2 = "("
+                #     tokens[row_index][token_index] = token_1 + token_2
+                #     del tokens[row_index][token_index + 1]
+                #     token_index += 1
+                # elif token == "=":
+                #     # TODO 这种情况同样极为特殊，下次在遇到相关等号的词时需要谨慎处理。
+                #     while token_index + 1 < len(tokens[row_index]) and bool(re.match('^[0-9 .亿万元]*$', tokens[row_index][token_index + 1])):
+                #         tokens[row_index][token_index] += tokens[row_index][token_index + 1]
+                #         del tokens[row_index][token_index + 1]
+                # 以下应该是为了处理round_1新加的规则。
+                # elif token.isdigit() and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == ".":
+                #     # 这种情况相对比较常见，即数字后面出现.的情况。需要将两者合并成一个token。
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif bool(re.match('    [0-9]*$', token)) and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == ".":
+                #     # 这种情况也极为特殊，但是是hanlp的错误分词导致的，它将\\和3分到了一个分词中。
+                #     tokens[row_index][token_index + 1] = f"{tokens[row_index][token_index][-1]}."
+                #     tokens[row_index][token_index] = tokens[row_index][token_index][:-1]
+                # elif token[-1] == ")" and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == "-":
+                #     # 这种情况是半角括号与-相邻，为了保证text_unit好处理，将两者合并。
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "-" and token_index + 1 < len(tokens[row_index]) and bool(re.match('^[a-zA-Z0-9]*$', tokens[row_index][token_index + 1][0])):
+                #     # 这种情况较为常见，是-和英文或数字接在了一起。需要将两者合并成一个token。
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif bool(re.match('\([a-zA-Z]*', token)) and token_index + 1 < len(tokens[row_index]) and bool(re.match('^[a-zA-Z0-9)]*$', tokens[row_index][token_index + 1][0])):
+                #     # 这种情况较为常见，是半角括号(和数字接在了一起。需要将两者合并成一个token。
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "(" and token_index + 1 < len(tokens[row_index]) and bool(re.match('^[a-zA-Z0-9]*$', tokens[row_index][token_index + 1])):
+                #     token[row_index][token_index] += tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "/" and token_index + 1 < len(tokens[row_index]) and tokens[row_index][token_index + 1] == "Moss":
+                #     # 罕见的情况，分词中出现斜杠，550w/Moss。
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "a" and tokens[row_index][token_index + 1] == "==" and tokens[row_index][token_index + 2] == "b":
+                #     tokens[row_index][token_index] = "a==b"
+                #     del tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "23.6" and tokens[row_index][token_index + 1] == "%" and tokens[row_index][token_index + 2] == "(" and tokens[row_index][token_index + 3] == "1231":
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1] + tokens[row_index][token_index + 2] + tokens[row_index][token_index + 3]
+                #     del tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "23.6%" and tokens[row_index][token_index + 1] == "(" and tokens[row_index][token_index + 2] == "1231年":
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1] + "1231"
+                #     del tokens[row_index][token_index + 1]
+                #     tokens[row_index][token_index + 1] = "年"
+                # elif token == "[" and tokens[row_index][token_index + 1].isdigit() and tokens[row_index][token_index + 2] == "]":
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1] + tokens[row_index][token_index + 2]
+                #     del tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
+                # elif token == "维生素C" and tokens[row_index][token_index + 1] == "-" and tokens[row_index][token_index + 2] == "WIKI":
+                #     tokens[row_index][token_index] += tokens[row_index][token_index + 1] + tokens[row_index][token_index + 2]
+                #     del tokens[row_index][token_index + 1]
+                #     del tokens[row_index][token_index + 1]
                 else:
                     token_index += 1
 
@@ -135,6 +155,7 @@ def tokenize_exp_text_sorted():
     for text_dict in sorted_text_list:
         # 用于控制每分钟最多调用HanLP 50次。
         current_time = time.time()
+        time_list.append(current_time)
         if len(time_list) > 48:
             if current_time - time_list[0] < 65:
                 print(f"sleep for {65 - (current_time - time_list[0])} seconds")
@@ -144,8 +165,8 @@ def tokenize_exp_text_sorted():
 
         text_index = text_dict["text_index"]
         print(text_index)
-        if text_index != f'{configs.temp_token_debug_num}':
-            continue
+        # if text_index != f'{configs.temp_token_debug_num}':
+        #     continue
         text = text_dict["text"].replace(" ", "\\")
 
         fine_tokens, coarse_tokens = tokenize_with_hanlp(HanLP, text)
@@ -262,9 +283,10 @@ def add_text_unit_index_to_tokens():
         coarse_tokens_file_name = f"{coarse_token_file_index_list[file_index]}.csv"
         fine_tokens_df = pd.read_csv(f"{fine_tokens_path_prefix}{fine_tokens_file_name}", encoding="utf-8_sig", skip_blank_lines=False)
         coarse_tokens_df = pd.read_csv(f"{coarse_tokens_path_prefix}{coarse_tokens_file_name}", encoding="utf-8_sig", skip_blank_lines=False)
-        text_unit_list = sorted_text_mapping[file_index][:12]  # TODO 之后删掉这里的12。
-        if file_index < configs.temp_token_debug_num:
-            continue
+        text_unit_list = sorted_text_mapping[file_index]
+        # if file_index != configs.temp_token_debug_num:
+        #     continue
+        print(file_index)
         fine_text_unit_component_list, fine_row_list = find_text_unit_of_tokens(text_unit_list, fine_tokens_df)
         coarse_text_unit_component_list, coarse_row_list = find_text_unit_of_tokens(text_unit_list, coarse_tokens_df)
         fine_tokens_df["text_unit_component"] = fine_text_unit_component_list

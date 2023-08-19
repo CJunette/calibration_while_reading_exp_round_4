@@ -42,13 +42,13 @@ def read_text_mapping_of_sorted_data():
     text_unit_list_1 = []
 
     for para_id, df_grouped_by_para_id in df_text_mapping_grouped_by_para_id:
-        text_unit_list_2 = []
+        text_unit_list_2 = [[] for _ in range(configs.row_num)]
         df_grouped_by_row = df_grouped_by_para_id.groupby("row")
         for row_id, df_grouped_by_row in df_grouped_by_row:
             text_unit_list_3 = []
             for text_unit_index in range(df_grouped_by_row.shape[0]):
                 text_unit_list_3.append(df_grouped_by_row.iloc[text_unit_index]["word"])
-            text_unit_list_2.append(text_unit_list_3)
+            text_unit_list_2[row_id] = text_unit_list_3
         text_unit_list_1.append(text_unit_list_2)
 
     return text_unit_list_1
@@ -142,3 +142,5 @@ def change_single_quotation_to_double_quotation(x):
     '''
     x_changed = x.replace("\'", "\"")
     return x_changed
+
+

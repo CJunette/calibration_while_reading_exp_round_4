@@ -1,3 +1,4 @@
+import math
 import os
 from multiprocessing import Pool
 
@@ -22,16 +23,18 @@ def get_text_unit_density_single_pool(text_mapping_list, file_index, matrix_x, d
         for text_mapping_index in range(df_text_mapping_of_para_id.shape[0]):
             text_mapping_x = df_text_mapping_of_para_id.iloc[text_mapping_index]["x"]
             text_mapping_y = df_text_mapping_of_para_id.iloc[text_mapping_index]["y"]
-            distance_to_gaze = (gaze_x - text_mapping_x) ** 2 + (gaze_y - text_mapping_y) ** 2
+            distance_to_gaze = math.sqrt((gaze_x - text_mapping_x) ** 2 + (gaze_y - text_mapping_y) ** 2)
             distance_to_text_unit_list.append(distance_to_gaze)
-        min_index = distance_to_text_unit_list.index(min(distance_to_text_unit_list))
-        text_unit_density[min_index] += 1
+        # 添加额外的判断，如果距离太远，就不属于任何一个text unit。
+        min_distance = min(distance_to_text_unit_list)
+        if min_distance < configs.text_unit_density_threshold:
+            min_index = distance_to_text_unit_list.index(min(distance_to_text_unit_list))
+            text_unit_density[min_index] += 1
     df_text_mapping_of_para_id["text_unit_density"] = text_unit_density
     return df_text_mapping_of_para_id, file_index, para_id
 
 
 def get_text_unit_density():
-    # text_unit_list = read_files.read_text_mapping_of_sorted_data()
     text_mapping_list = read_files.read_all_modified_reading_text_mapping()
     df_reading_list = read_files.read_all_modified_reading_files()
 
@@ -43,11 +46,13 @@ def get_text_unit_density():
     #         df_reading_grouped_by_matrix_x = df_reading.groupby("matrix_x")
     #         for matrix_x, df_reading_matrix_x in df_reading_grouped_by_matrix_x:
     #             text_density_result = get_text_unit_density_single_pool(text_mapping_list, file_index, matrix_x, df_reading_matrix_x)
-    #             df_text_density_list_1.append(text_density_result)
+    #             df_text_density_list.append(text_density_result)
 
+    file_list = os.listdir(f"data/modified_gaze_data/{configs.round}/{configs.device}")
     # for multi pool
-    args_list = []
     for file_index in range(len(df_reading_list)):
+        args_list = []
+
         for iteration_index in range(len(df_reading_list[file_index])):
             df_reading = df_reading_list[file_index][iteration_index]
             df_reading_grouped_by_matrix_x = df_reading.groupby("matrix_x")
@@ -55,11 +60,10 @@ def get_text_unit_density():
                 args = [text_mapping_list, file_index, matrix_x, df_reading_matrix_x]
                 args_list.append(args)
 
-    with Pool(16) as p:
-        text_mapping_result = p.starmap(get_text_unit_density_single_pool, args_list)
+        with Pool(16) as p:
+            text_mapping_result = p.starmap(get_text_unit_density_single_pool, args_list)
 
-    file_list = os.listdir(f"data/modified_gaze_data/{configs.round}/{configs.device}")
-    for file_index in range(len(df_reading_list)):
+    # for file_index in range(len(df_reading_list)):
         text_mapping_result_of_file_index = []
         for text_mapping_result_item in text_mapping_result:
             if text_mapping_result_item[1] == file_index:
@@ -153,9 +157,8 @@ def get_token_density():
     #         df_fine_token_density_list.append(df_fine_token_density)
     #     df_fine_token_density = pd.concat(df_fine_token_density_list, ignore_index=True)
     #
-    #     fine_save_path = f"data/text_density/{configs.round}/{configs.device}/{text_unit_density_file_list[file_index]}/fine_token_density.csv"
-    #
-    #     df_fine_token_density.to_csv(fine_save_path, encoding="utf-8_sig", index=False)
+    #     # fine_save_path = f"data/text_density/{configs.round}/{configs.device}/{text_unit_density_file_list[file_index]}/fine_token_density.csv"
+    #     # df_fine_token_density.to_csv(fine_save_path, encoding="utf-8_sig", index=False)
 
     df_fine_token_list = read_files.read_all_token_data("fine")
     fine_args_list = create_args_list(df_fine_token_list, df_text_density_list)

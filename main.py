@@ -4,6 +4,8 @@ import os
 import numpy as np
 import pandas as pd
 
+import analyse_calibration_data
+import configs
 import get_reading_density
 import read_files
 import talk_with_GPT
@@ -13,23 +15,26 @@ import text_process
 
 def get_token_info():
     # text_process.tokenize_exp_text_sorted() # 用于分词。
-    text_process.add_text_unit_index_to_tokens() # 用于获取分词对应的text_unit的index。
-    # text_process.add_text_context_to_tokens() # 用于获取每个分词的上下文。
+    # text_process.add_text_unit_index_to_tokens() # 用于获取分词对应的text_unit的index。
+    text_process.add_text_context_to_tokens() # 用于获取每个分词的上下文。
 
 
 def get_density():
     # get_reading_density.get_text_unit_density() # 获取每个text_unit的密度。
     get_reading_density.get_token_density() # 将text_unit的密度组合成为token的密度。经过这个函数后，token的行会被调整为其所在的真实行（之前都是1-3之间，现在会根据text_unit的位置被调整为1-3或4-6）。
 
+
 if __name__ == '__main__':
     # temporary_functions.combine_data() # 将round4中出错的两轮实验的数据合并在一个file里。
     # temporary_functions.split_data_in_round_1() # 用来将round1中合并的数据拆分成其他round那样的格式。
     # temporary_functions.split_seeso_data() # 用来将seeso数据拆分成其他round那样的格式。
+    # temporary_functions.modify_round_1_reading_data_using_calibration() # 用于将round_1的数据通过calibration估算出的单应性矩阵调整到正确的位置。
 
-    get_token_info()
+    # analyse_calibration_data.visualize_original_cali_centroids(f"data/back_up_gaze_data/{configs.round}/reformat_data/20230724_101920/calibration.csv")
+
+    # get_token_info()
     # get_density()
-
-    # talk_with_GPT.save_fine_tune_data()
+    talk_with_GPT.save_fine_tune_data()
     # talk_with_GPT.test_gpt_fine_tune_prediction()
 
     # talk_with_GPT.get_gpt_prediction()

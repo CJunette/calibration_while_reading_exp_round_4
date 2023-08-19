@@ -3,6 +3,11 @@ import os
 import numpy as np
 import pandas as pd
 
+import analyse_calibration_data
+import analyse_reading_data
+import configs
+
+
 def combine_error_data_in_round_4():
     '''
     用于将出错的实验中的有效阅读数据与后续补救实验中的数据合到一起。
@@ -196,7 +201,58 @@ def split_seeso_data():
         df_cali.to_csv(f"{save_path}/seeso_calibration.csv", encoding="utf-8_sig")
 
 
+def modify_round_1_reading_data_using_calibration():
+    file_path_prefix = f"data/back_up_gaze_data/round_1/reformat_data/"
+    file_list = os.listdir(file_path_prefix)
+
+    for file_index in range(len(file_list)):
+        calibration_file_name = f"{file_path_prefix}/{file_list[file_index]}/calibration.csv"
+        df_calibration = pd.read_csv(calibration_file_name, encoding="utf-8_sig")
+        homography_matrix = analyse_calibration_data.get_homography_matrix_for_calibration(df_calibration)
+
+        reading_file_path = f"{file_path_prefix}/{file_list[file_index]}/reading"
+        reading_file_list = os.listdir(reading_file_path)
+        reading_file_list = [int(i[:-4]) for i in reading_file_list]
+        reading_file_list.sort()
+
+        for reading_file_index in range(len(reading_file_list)):
+            df = pd.read_csv(f"{reading_file_path}/{reading_file_list[reading_file_index]}.csv", encoding="utf-8_sig", index_col=False)
+            df.drop(df.columns[0], axis=1, inplace=True)
+            transformed_df = analyse_reading_data.apply_homography_to_reading(df, homography_matrix)
+
+            save_name = f"data/modified_gaze_data/round_1/tobii/{file_list[file_index]}/reading/{reading_file_index}.csv"
+            transformed_df.to_csv(save_name, encoding="utf-8_sig", index=False)
 
 
+def generate_reading_data_90_to_94():
+    '''
+        单独生成90-94的reading数据。
+    '''
+    file_path_prefix = f"data/back_up_gaze_data/round_1/reformat_data/"
+    file_list = os.listdir(file_path_prefix)
 
+    reading_df_list_1 = []
+    calibration_df_list_1 = []
+    for file_index in range(len(file_list)):
+        calibration_file_name = f"{file_path_prefix}/{file_list[file_index]}/calibration.csv"
+        df_calibration = pd.read_csv(calibration_file_name, encoding="utf-8_sig")
+        calibration_df_list_1.append(df_calibration)
 
+        reading_file_path = f"{file_path_prefix}/{file_list[file_index]}/reading"
+        reading_file_list = os.listdir(reading_file_path)
+        reading_file_list = [int(i[:-4]) for i in reading_file_list]
+        reading_file_list.sort()
+        df_90_94_list = []
+        index_list = [90, 91, 92, 93, 94]
+        for reading_file_index in range(len(reading_file_list)):
+            df = pd.read_csv(f"{reading_file_path}/{reading_file_list[reading_file_index]}.csv", encoding="utf-8_sig")
+            para_id_list = df["matrix_x"].unique()
+            para_id_list = [int(para_id_list[i]) for i in range(len(para_id_list))]
+            for index in index_list:
+                if index in para_id_list:
+                    df_90_94_list.append(df[df["matrix_x"] == index])
+        df_new = pd.concat(df_90_94_list)
+        save_path = f"data/back_up_gaze_data/round_1/temp/90-94/"
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        df_new.to_csv(save_path + f"{file_list[file_index]}_90-94.csv", encoding="utf-8_sig", index=False)

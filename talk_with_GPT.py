@@ -40,92 +40,126 @@ def get_gpt_embedding(target_str):
 '''GPT API相关'''
 
 
+def create_df_statistic_single_pool(token_index, df_list):
+    density_list = []
+    relative_density_list = []
+    for file_index in range(len(df_list)):
+        print(token_index, file_index)
+        density_list.append(df_list[file_index].iloc[token_index]["density"])
+        relative_density_list.append(df_list[file_index].iloc[token_index]["relative_density"])
+
+    return density_list, relative_density_list
+
+
+def create_df_statistic(df_list):
+    df_statistic = df_list[0].copy(deep=True)
+    temp_density = [[] for _ in range(df_statistic.shape[0])]
+    temp_relative_density = [[] for _ in range(df_statistic.shape[0])]
+    df_statistic["density"] = temp_density
+    df_statistic["relative_density"] = temp_relative_density
+    # for debug.
+    # for token_index in range(df_statistic.shape[0]):
+    #     density_list, relative_density_list = create_df_statistic_single_pool(token_index, df_list)
+    #     df_statistic.at[token_index, "density"] = density_list
+    #     df_statistic.at[token_index, "relative_density"] = relative_density_list
+
+    # 多线程。
+    args_list = []
+    for token_index in range(df_statistic.shape[0]):
+        args = [token_index, df_list]
+        args_list.append(args)
+    with Pool(16) as p:
+        results = p.starmap(create_df_statistic_single_pool, args_list)
+    for token_index in range(df_statistic.shape[0]):
+        df_statistic.at[token_index, "density"] = results[token_index][0]
+        df_statistic.at[token_index, "relative_density"] = results[token_index][1]
+
+    return df_statistic
+
+
 def prepare_data(token_type):
+    # 调整为多进程处理。
     token_density_list = read_files.read_token_density_of_token_type(token_type)
     # TODO 之后这里的training和testing的数量可能会发生调整，后续代码也需要修改。
-    df_density_for_training = token_density_list[:5]
-    df_density_for_testing = token_density_list[5]
+    df_density_for_training = token_density_list[:configs.fine_tune_training_file_num]
+    df_density_for_testing = token_density_list[configs.fine_tune_training_file_num:]
 
-    df_training_static = df_density_for_training[0].copy(deep=True)
-    temp_density = [[] for _ in range(df_training_static.shape[0])]
-    temp_relative_density = [[] for _ in range(df_training_static.shape[0])]
-    df_training_static["density"] = temp_density
-    df_training_static["relative_density"] = temp_relative_density
-    for token_index in range(df_training_static.shape[0]):
-        for file_index in range(len(df_density_for_training)):
-            df_training_static.iloc[token_index]["density"].append(df_density_for_training[file_index].iloc[token_index]["density"])
-            df_training_static.iloc[token_index]["relative_density"].append(df_density_for_training[file_index].iloc[token_index]["relative_density"])
+    df_training_statistic = create_df_statistic(df_density_for_training)
+    df_testing_statistic = create_df_statistic(df_density_for_testing)
 
-    return df_density_for_training, df_density_for_testing, df_training_static
+    return df_density_for_training, df_density_for_testing, df_training_statistic, df_testing_statistic
+    # return df_density_for_training, df_density_for_testing
 
 
-def prepare_text_for_gpt(df, bool_training=False):
-    sorted_text = read_files.read_sorted_text()
-    df_grouped_by_para_id = df.groupby("para_id")
-
+def prepare_text_for_gpt(df_list, bool_training=False):
     str_list = []
 
-    for para_id, df_para_id in df_grouped_by_para_id:
-        full_text = sorted_text[para_id]["text"]
-        full_text = full_text.replace("\n", "")
+    for file_index in range(len(df_list)):
+        df = df_list[file_index]
+        sorted_text = read_files.read_sorted_text()
+        df_grouped_by_para_id = df.groupby("para_id")
 
-        token_list = []
-        token_index_list = []
-        distance_start_list = []
-        distance_end_list = []
-        split_list = []
-        relative_density_mean_list = []
-        relative_density_std_list = []
+        for para_id, df_para_id in df_grouped_by_para_id:
+            full_text = sorted_text[para_id]["text"]
+            full_text = full_text.replace("\n", "")
 
-        for token_index in range(df_para_id.shape[0]):
-            token = df_para_id.iloc[token_index]["tokens"]
-            forward = df_para_id.iloc[token_index]["forward"]
-            backward = df_para_id.iloc[token_index]["backward"]
-            anterior_passage = df_para_id.iloc[token_index]["anterior_passage"]
-            density = df_para_id.iloc[token_index]["density"]
-            row_position = df_para_id.iloc[token_index]["row_position"]
-            distance_from_row_start = df_para_id.iloc[token_index]["start_dist"]
-            distance_from_row_end = df_para_id.iloc[token_index]["end_dist"]
-            split = df_para_id.iloc[token_index]["split"]
-            relative_density = df_para_id.iloc[token_index]["relative_density"]
+            token_list = []
+            token_index_list = []
+            distance_start_list = []
+            distance_end_list = []
+            split_list = []
+            relative_density_mean_list = []
+            relative_density_std_list = []
 
-            token_list.append(token)
-            token_index_list.append(token_index)
-            distance_start_list.append(distance_from_row_start)
-            distance_end_list.append(distance_from_row_end)
-            split_list.append(split)
+            for token_index in range(df_para_id.shape[0]):
+                token = df_para_id.iloc[token_index]["tokens"]
+                forward = df_para_id.iloc[token_index]["forward"]
+                backward = df_para_id.iloc[token_index]["backward"]
+                anterior_passage = df_para_id.iloc[token_index]["anterior_passage"]
+                density = df_para_id.iloc[token_index]["density"]
+                row_position = df_para_id.iloc[token_index]["row_position"]
+                distance_from_row_start = df_para_id.iloc[token_index]["start_dist"]
+                distance_from_row_end = df_para_id.iloc[token_index]["end_dist"]
+                split = df_para_id.iloc[token_index]["split"]
+                relative_density = df_para_id.iloc[token_index]["relative_density"]
 
-            relative_density_mean = int(np.mean(relative_density) * 1e6) / 1e4
-            relative_density_std = int(np.std(relative_density) * 1e6) / 1e4
-            relative_density_mean_list.append(relative_density_mean)
-            relative_density_std_list.append(relative_density_std)
+                token_list.append(token)
+                token_index_list.append(token_index)
+                distance_start_list.append(distance_from_row_start)
+                distance_end_list.append(distance_from_row_end)
+                split_list.append(split)
 
-        token_str = "[" + ",".join(token_list) + "]"
-        token_index_str = "[" + ",".join([str(i) for i in token_index_list]) + "]"
-        distance_start_str = "[" + ",".join([str(i) for i in distance_start_list]) + "]"
-        distance_end_str = "[" + ",".join([str(i) for i in distance_end_list]) + "]"
-        split_str = "[" + ",".join([str(i) for i in split_list]) + "]"
-        relative_density_mean_str = "[" + ",".join([str(i) for i in relative_density_mean_list]) + "]"
-        relative_density_std_str = "[" + ",".join([str(i) for i in relative_density_std_list]) + "]"
+                relative_density_mean = int(np.mean(relative_density) * 1e6) / 1e4
+                relative_density_std = int(np.std(relative_density) * 1e6) / 1e4
+                relative_density_mean_list.append(relative_density_mean)
+                relative_density_std_list.append(relative_density_std)
 
-        if bool_training:
-            para_str = "{" + f"'full_text': {full_text}, " \
-                             f"'token_list': {token_str}, " \
-                             f"'token_index_list': {token_index_str}, " \
-                             f"'dist_start_list': {distance_start_str}, " \
-                             f"'dist_end_list': {distance_end_str}, " \
-                             f"'split_list': {split_str}, " \
-                             f"'rela_den_mean_list': {relative_density_mean_str}, " \
-                             f"'rela_den_std_list': {relative_density_std_str}" + "}"
-        else:
-            para_str = "{" + f"'full_text': {full_text}, " \
-                             f"'token_list': {token_str}, " \
-                             f"'token_index_list': {token_index_str}, " \
-                             f"'dist_start_list': {distance_start_str}, " \
-                             f"'dist_end_list': {distance_end_str}, " \
-                             f"'split_list': {split_str}" + "}"
+            token_str = "[" + ",".join(token_list) + "]"
+            token_index_str = "[" + ",".join([str(i) for i in token_index_list]) + "]"
+            distance_start_str = "[" + ",".join([str(i) for i in distance_start_list]) + "]"
+            distance_end_str = "[" + ",".join([str(i) for i in distance_end_list]) + "]"
+            split_str = "[" + ",".join([str(i) for i in split_list]) + "]"
+            relative_density_mean_str = "[" + ",".join([str(i) for i in relative_density_mean_list]) + "]"
+            relative_density_std_str = "[" + ",".join([str(i) for i in relative_density_std_list]) + "]"
 
-        str_list.append(para_str)
+            if bool_training:
+                para_str = "{" + f"'full_text': {full_text}, " \
+                                 f"'token_list': {token_str}, " \
+                                 f"'token_index_list': {token_index_str}, " \
+                                 f"'dist_start_list': {distance_start_str}, " \
+                                 f"'dist_end_list': {distance_end_str}, " \
+                                 f"'split_list': {split_str}, " \
+                                 f"'rela_den_mean_list': {relative_density_mean_str}, " \
+                                 f"'rela_den_std_list': {relative_density_std_str}" + "}"
+            else:
+                para_str = "{" + f"'full_text': {full_text}, " \
+                                 f"'token_list': {token_str}, " \
+                                 f"'token_index_list': {token_index_str}, " \
+                                 f"'dist_start_list': {distance_start_str}, " \
+                                 f"'dist_end_list': {distance_end_str}, " \
+                                 f"'split_list': {split_str}" + "}"
+
+            str_list.append(para_str)
     return str_list
 
 
@@ -134,8 +168,8 @@ def _save_gpt_prediction(token_type):
     set_openai()
 
     # TODO 这里的df_density_for_testing目前只有一个文件，之后可能也会变成多个文件，需要重新修改一下这里相关的代码。
-    df_density_for_training, df_density_for_testing, df_training_static = prepare_data(token_type)
-    training_str_list = prepare_text_for_gpt(df_training_static, bool_training=True)
+    df_density_for_training, df_density_for_testing, df_training_statistic, df_testing_statistic = prepare_data(token_type)
+    training_str_list = prepare_text_for_gpt(df_density_for_training, bool_training=True)
     testing_str_list = prepare_text_for_gpt(df_density_for_testing, bool_training=False)
 
     training_text_num = 3
@@ -189,66 +223,130 @@ def _save_gpt_prediction(token_type):
 
 
 '''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
-'''FINE TUNE相关'''
+'''FINE TUNE保存训练集相关'''
+
+
+def prepare_text_for_fine_tune_single_pool(para_id, token_index, sorted_text, df_para_id):
+    print(para_id, token_index)
+    full_text = sorted_text[para_id]["text"]
+    # 部分full_text最后可能会是一个\n，需要将它去掉
+    if full_text[-1] == "\n":
+        full_text = full_text[:-1]
+    token = df_para_id.iloc[token_index]["tokens"]
+    forward = df_para_id.iloc[token_index]["forward"]
+    backward = df_para_id.iloc[token_index]["backward"]
+    anterior_passage = df_para_id.iloc[token_index]["anterior_passage"]
+    density = df_para_id.iloc[token_index]["density"]
+    row_position = df_para_id.iloc[token_index]["row_position"]
+    distance_from_row_start = df_para_id.iloc[token_index]["start_dist"]
+    distance_from_row_end = df_para_id.iloc[token_index]["end_dist"]
+    split = df_para_id.iloc[token_index]["split"]
+    row = df_para_id.iloc[token_index]["row"][0]
+
+    prompt_dict = {
+        "token": token,
+        "token_index": int(token_index),
+        "backward": backward,
+        "forward": forward,
+        "row": int(row),
+        "split": int(split),
+        "anterior_passage": anterior_passage,
+        "distance_from_row_end": int(distance_from_row_end),
+        "distance_from_row_start": int(distance_from_row_start)
+    }
+
+    relative_density = df_para_id.iloc[token_index]["relative_density"]
+    # 将relative_density转为str，每个数据保留3位有效数字
+    relative_density_mean = np.mean(relative_density)
+    relative_density_std = np.std(relative_density)
+    density_mean = np.mean(density)
+    density_std = np.std(density)
+    completion_dict = {
+        "relative_density_mean": relative_density_mean,
+        "relative_density_std": relative_density_std,
+        "density_mean": density_mean,
+        "density_std": density_std
+    }
+    return prompt_dict, completion_dict
+
 
 def prepare_text_for_fine_tune(df, bool_training=False):
     sorted_text = read_files.read_sorted_text()
-    df_grouped_by_para_id = df.groupby("para_id")
 
     prompt_list = []
     completion_list = []
+    df_grouped_by_para_id = df.groupby("para_id")
 
+    # for debug.
+    # for para_id, df_para_id in df_grouped_by_para_id:
+    #     print(para_id)
+    #     if bool_training:
+    #         if para_id >= configs.fine_tune_training_para_num:
+    #             break
+    #     else:
+    #         if para_id < configs.fine_tune_training_para_num:
+    #             continue
+    #
+    #     full_text = sorted_text[para_id]["text"]
+    #     # 部分full_text最后可能会是一个\n，需要将它去掉
+    #     if full_text[-1] == "\n":
+    #         full_text = full_text[:-1]
+    #
+    #     for token_index in range(df_para_id.shape[0]):
+    #         token = df_para_id.iloc[token_index]["tokens"]
+    #         forward = df_para_id.iloc[token_index]["forward"]
+    #         backward = df_para_id.iloc[token_index]["backward"]
+    #         anterior_passage = df_para_id.iloc[token_index]["anterior_passage"]
+    #         density = df_para_id.iloc[token_index]["density"]
+    #         row_position = df_para_id.iloc[token_index]["row_position"]
+    #         distance_from_row_start = df_para_id.iloc[token_index]["start_dist"]
+    #         distance_from_row_end = df_para_id.iloc[token_index]["end_dist"]
+    #         split = df_para_id.iloc[token_index]["split"]
+    #         row = df_para_id.iloc[token_index]["row"][0]
+    #
+    #         prompt_dict = {
+    #             "token": token,
+    #             "token_index": int(token_index),
+    #             "backward": backward,
+    #             "forward": forward,
+    #             "row": int(row),
+    #             "split": int(split),
+    #             "anterior_passage": anterior_passage,
+    #             "distance_from_row_end": int(distance_from_row_end),
+    #             "distance_from_row_start": int(distance_from_row_start)
+    #         }
+    #         prompt_list.append(prompt_dict)
+    #
+    #         relative_density = df_para_id.iloc[token_index]["relative_density"]
+    #         # 将relative_density转为str，每个数据保留3位有效数字
+    #         relative_density_mean = np.mean(relative_density)
+    #         relative_density_std = np.std(relative_density)
+    #         density_mean = np.mean(density)
+    #         density_std = np.std(density)
+    #         completion_dict = {
+    #             "relative_density_mean": relative_density_mean,
+    #             "relative_density_std": relative_density_std,
+    #             "density_mean": density_mean,
+    #             "density_std": density_std
+    #         }
+    #         completion_list.append(completion_dict)
+
+    args_list = []
     for para_id, df_para_id in df_grouped_by_para_id:
         if bool_training:
-            if para_id >= configs.fine_tune_training_num:
+            if para_id >= configs.fine_tune_training_para_num:
                 break
         else:
-            if para_id < configs.fine_tune_training_num:
+            if para_id < configs.fine_tune_training_para_num:
                 continue
-
-        full_text = sorted_text[para_id]["text"]
-        # 部分full_text最后可能会是一个\n，需要将它去掉
-        if full_text[-1] == "\n":
-            full_text = full_text[:-1]
-
         for token_index in range(df_para_id.shape[0]):
-            token = df_para_id.iloc[token_index]["tokens"]
-            forward = df_para_id.iloc[token_index]["forward"]
-            backward = df_para_id.iloc[token_index]["backward"]
-            anterior_passage = df_para_id.iloc[token_index]["anterior_passage"]
-            density = df_para_id.iloc[token_index]["density"]
-            row_position = df_para_id.iloc[token_index]["row_position"]
-            distance_from_row_start = df_para_id.iloc[token_index]["start_dist"]
-            distance_from_row_end = df_para_id.iloc[token_index]["end_dist"]
-            split = df_para_id.iloc[token_index]["split"]
-            row = df_para_id.iloc[token_index]["row"][0]
+            args_list.append([para_id, token_index, sorted_text, df_para_id])
+    with Pool(16) as p:
+        result = p.starmap(prepare_text_for_fine_tune_single_pool, args_list)
 
-            prompt_dict = {
-                "token": token,
-                "token_index": int(token_index),
-                "backward": backward,
-                "forward": forward,
-                "row": int(row),
-                "split": int(split),
-                "anterior_passage": anterior_passage,
-                "distance_from_row_end": int(distance_from_row_end),
-                "distance_from_row_start": int(distance_from_row_start)
-            }
-            prompt_list.append(prompt_dict)
-
-            relative_density = df_para_id.iloc[token_index]["relative_density"]
-            # 将relative_density转为str，每个数据保留3位有效数字
-            relative_density_mean = np.mean(relative_density)
-            relative_density_std = np.std(relative_density)
-            density_mean = np.mean(density)
-            density_std = np.std(density)
-            completion_dict = {
-                "relative_density_mean": relative_density_mean,
-                "relative_density_std": relative_density_std,
-                "density_mean": density_mean,
-                "density_std": density_std
-            }
-            completion_list.append(completion_dict)
+    for result_index in range(len(result)):
+        prompt_list.append(result[result_index][0])
+        completion_list.append(result[result_index][1])
 
     return prompt_list, completion_list
 
@@ -266,10 +364,11 @@ def _save_fine_tune_data(token_type):
 
                 f.write(json.dumps(data) + "\n")
 
-    df_density_for_training, df_density_for_testing, df_training_static = prepare_data(token_type)
-    training_prompt_list, training_completion_list = prepare_text_for_fine_tune(df_training_static, bool_training=True)
-    testing_prompt_list, test_completion_list = prepare_text_for_fine_tune(df_density_for_testing, bool_training=False)
-    validation_prompt_list, validation_completion_list = prepare_text_for_fine_tune(df_training_static, bool_training=False)
+    df_density_for_training, df_density_for_testing, df_training_statistic, df_testing_statistic = prepare_data(token_type)
+    # df_density_for_training, df_density_for_testing = prepare_data(token_type)
+    training_prompt_list, training_completion_list = prepare_text_for_fine_tune(df_training_statistic, bool_training=True)
+    testing_prompt_list, test_completion_list = prepare_text_for_fine_tune(df_testing_statistic, bool_training=False)
+    validation_prompt_list, validation_completion_list = prepare_text_for_fine_tune(df_training_statistic, bool_training=False)
 
     training_data_path = "data/fine_tune/training_data/"
     if not os.path.exists(training_data_path):
@@ -281,9 +380,9 @@ def _save_fine_tune_data(token_type):
     if not os.path.exists(validation_data_path):
         os.makedirs(os.path.dirname(validation_data_path))
 
-    training_data_name = f"{training_data_path}{token_type}_training_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
-    testing_data_name = f"{testing_data_path}{token_type}_testing_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
-    validation_data_name = f"{validation_data_path}{token_type}_validation_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
+    training_data_name = f"{training_data_path}{configs.round}_{token_type}_training_data_ver_{configs.fine_tune_ver}.jsonl"
+    testing_data_name = f"{testing_data_path}{configs.round}_{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_name = f"{validation_data_path}{configs.round}_{token_type}_validation_data_ver_{configs.fine_tune_ver}.jsonl"
 
     save_data(training_data_name, training_prompt_list, training_completion_list)
     save_data(testing_data_name, testing_prompt_list, test_completion_list)
@@ -298,6 +397,10 @@ def _save_fine_tune_data(token_type):
     # 然后按openai官网的提示继续创建模型即可。
     # openai api fine_tunes.create -t <TRAIN_FILE_ID_OR_PATH> -m <BASE_MODEL>
     # 以上内容的网页参考：https://platform.openai.com/docs/guides/fine-tuning。
+
+
+'''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
+'''FINE TUNE结果验证相关'''
 
 
 def get_fine_tune_prediction(test_data_list, validation_data_list, test_data_index):
@@ -341,14 +444,14 @@ def get_fine_tune_prediction(test_data_list, validation_data_list, test_data_ind
 
 
 def save_gpt_fine_tune_prediction(token_type):
-    test_data_file_path = f"data/fine_tune/testing_data/{token_type}_testing_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
+    test_data_file_path = f"data/fine_tune/testing_data/{configs.round}_{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
     test_data_list = []
     with open(test_data_file_path, "r") as f:
         for line in f:
             entry = json.loads(line)
             test_data_list.append(entry)
 
-    validation_data_file_path = f"data/fine_tune/validation_data/{token_type}_validation_data_{configs.round}_ver_{configs.fine_tune_ver}.jsonl"
+    validation_data_file_path = f"data/fine_tune/validation_data/{configs.round}_{token_type}_validation_data_ver_{configs.fine_tune_ver}.jsonl"
     validation_data_list = []
     with open(validation_data_file_path, "r") as f:
         for line in f:
@@ -522,9 +625,9 @@ def save_fine_tune_data(token_type="fine"):
 
 
 def test_gpt_fine_tune_prediction(token_type="fine"):
-    # save_gpt_fine_tune_prediction(token_type) # 保存gpt预测结果。
+    save_gpt_fine_tune_prediction(token_type) # 保存gpt预测结果。
     # check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
-    read_and_visualize_gpt_prediction(token_type) # 根据某次返回结果，检查其与实际结果是否接近。
+    # read_and_visualize_gpt_prediction(token_type) # 根据某次返回结果，检查其与实际结果是否接近。
 
 
 def get_gpt_prediction(token_type="fine"):
