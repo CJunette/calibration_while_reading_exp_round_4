@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # analyse_reading_data.render_point_density_hist()
     # analyse_reading_data.match_manual_weight_and_gaze_density()
-    analyse_reading_data.down_sample_reading()
+    # analyse_reading_data.down_sample_reading()
 
     # analyse_calibration_data.visualize_original_cali_centroids(f"data/back_up_gaze_data/{configs.round}/reformat_data/20230724_101920/calibration.csv")
 
@@ -43,5 +43,5 @@ if __name__ == '__main__':
     # talk_with_GPT.save_fine_tune_data()
     # talk_with_GPT.test_gpt_fine_tune_prediction()
 
-    # talk_with_GPT.get_gpt_prediction()
+    talk_with_GPT.get_gpt_prediction()
 

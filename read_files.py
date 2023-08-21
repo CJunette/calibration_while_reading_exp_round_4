@@ -162,3 +162,21 @@ def read_reading_data():
     return reading_data_list_1
 
 
+def read_tokens(token_type="fine"):
+    file_path = f"data/text/{configs.round}/tokens/{token_type}_tokens/"
+    file_list = os.listdir(file_path)
+    file_list = [int(i[:-4]) for i in file_list]
+    file_list.sort()
+
+    tokens_list = []
+    for file_index in range(len(file_list)):
+        tokens_df = pd.read_csv(f"{file_path}{file_list[file_index]}.csv", encoding="utf-8_sig")
+        tokens_df["row"] = tokens_df["row"].apply(json.loads)
+        tokens_df["text_unit_component"] = tokens_df["text_unit_component"].apply(json.loads)
+        tokens_df["backward"] = tokens_df["backward"].apply(json.loads)
+        tokens_df["forward"] = tokens_df["forward"].apply(json.loads)
+        tokens_df["anterior_passage"] = tokens_df["anterior_passage"].apply(json.loads)
+        tokens_list.append(tokens_df)
+
+    return tokens_list
+

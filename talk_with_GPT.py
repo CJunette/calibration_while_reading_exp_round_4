@@ -1,5 +1,6 @@
 import json
 import os.path
+import re
 from multiprocessing import Pool
 
 from matplotlib.patches import Rectangle, Ellipse, Circle
@@ -168,58 +169,60 @@ def _save_gpt_prediction(token_type):
     set_openai()
 
     # TODO 这里的df_density_for_testing目前只有一个文件，之后可能也会变成多个文件，需要重新修改一下这里相关的代码。
-    df_density_for_training, df_density_for_testing, df_training_statistic, df_testing_statistic = prepare_data(token_type)
-    training_str_list = prepare_text_for_gpt(df_density_for_training, bool_training=True)
-    testing_str_list = prepare_text_for_gpt(df_density_for_testing, bool_training=False)
+    # df_density_for_training, df_density_for_testing, df_training_statistic, df_testing_statistic = prepare_data(token_type)
+    # training_str_list = prepare_text_for_gpt(df_density_for_training, bool_training=True)
+    # testing_str_list = prepare_text_for_gpt(df_density_for_testing, bool_training=False)
 
-    training_text_num = 3
-    response = openai.ChatCompletion.create(
-        model="gpt-4-0613",
-        messages=[
-            {"role": "system", "content": "你是一个分析文本分词与阅读眼动行为的专家。我会为你提供一系列文本的分词，及人在阅读时视线在上面停留的相对时间。"
-                                          "你需要主要从3个方面理解文本与阅读时间之间的关联：1. 该分词本身的特征（如难度、生僻程度）。2. 该分词与整篇文章所传达的核心意思之间的关联。3. 该分词与上下文之间的关联（即确定上文时，该分词是否容易预测）。"},
-            {"role": "user", "content": "我会解释一下我将提供的数据格式及其含义。\n"
-                                        "我会向你提供一系列供学习的文本，以及该文本的分词（token_list）、分词序号（token_index_list）、到行首的距离（dist_start_list）、到行尾的距离（dist_end_list）、当前词是否被换行分割（split_list）、相对密度均值（rela_den_mean_list）、相对密度方差（rela_den_std_list）。\n"
-                                        "分词、分词序号、到行首的距离、到行尾的距离、当前词是否被换行分割、相对密度均值、相对密度方差都是等长的列表。\n"
-                                        "其中分词代表文本全文中的一个分词。分词序号代表该序号在所有分词中的位置。"
-                                        "到行首的距离代表该分词到当前行的第一个分词的距离，如果该距离为0，则说明当前分词是改行的第一个分词。到行尾的距离代表该分词到当前行的最后一个分词的距离，如果该距离为0，则说明当前分词是该行的最后一个分词，也即下一个分词即需要换行。"
-                                        "当前词是否被换行分割代表该分词是否被换行分割，导致一部分在行尾，另一部分在行首。如果该值为1，则说明该分词是被换行分割的。"
-                                        "相对密度（relative_density）代表的是不同用户的实现在该分词上停留的时间，相对密度越大代表停留时间越长。其均值和方差就是对样本数据的具体统计量。一篇文章的相对密度的均值应该接近100。\n"
-                                        "你需要学习这些文本的分词与相对密度之间的关系，并将这个知识用于之后的任务。\n"
-                                        "注意，符号或空格也需要被统计。\n"
-                                        "学习文本的具体的数据格式如下：\n"
-                                        "{'full_text': '【领英中国今日停服，包括移动端 App、桌面端网站和微信小程序等】    据IT之家消息，今年5月9日，职场社交平台领英宣布，求职App领英职场将于2023年8月9日起正式停服。'"
-                                        "'token_list': [【, 领英, ...], "
-                                        "'token_index_list': [0, 1, ...], "
-                                        "'dist_start_list': [0, 1, ...], "
-                                        "'dist_end_list': [17, 16, ...], "
-                                        "'split_list': [0, 0, ...], "
-                                        "'rela_den_mean_list': [0.0, 0.2532, ...], "
-                                        "'rela_den_std_list': [0.0, 0.2127, ...]}\n"
-                                        "你可以按以下思路学习。"
-                                        "第0个分词是'【'，它距离行首很近（0），距离行尾很远（17），它没有被换行分割，因为这是个标点，人们看他的可能性很小，因此。相对密度的均值应该很小，且标准差很小。\n"
-                                        "第1个分词是'领英'，它距离行首很近（1），距离行尾很远（16），它没有被换行分割，因为这是个行首的专有名词，与文章的主要意思关联可能很大，人们有较大可能会看它，因此。相对密度的均值应该较大，但因为不同人对这个词汇的了解程度不同，因此标准差应该也很大。\n"
-                                        "..."},
+    token_list = read_files.read_tokens()
+    target_para_index = [90, 91, 92, 93, 94]
+    target_token_list = []
+    for para_index in target_para_index:
+        target_token_list.append(token_list[para_index])
 
-            {"role": "user", "content": "之后我向你询问的文本中将不包含密度相关的信息。\n"
-                                        "举例。\n"
-                                        "如果我提供："
-                                        "{'full_text': '中国今日'"
-                                        "'tokens_and_info': "
-                                        "'token_list': [中国, 今日], "
-                                        "'token_index_list': [2, 3], "
-                                        "'dist_start_list': [2, 3], "
-                                        "'dist_end_list': [15, 14], "
-                                        "'split_list': [0, 0],}\n"
-                                        "你需要直接返回\n" 
-                                        "[{'token_list': [中国, 今日], 'token_index_list': [2, 3], 'rela_den_mean_list': [0.3152, 0.1719], 'rela_den_std_list': [0.1862, 0.08749]}\n"},
-            {"role": "assistant", "content": "好的，我已经理解了，现在可以给我更多的文本了供我学习。"},
-            {"role": "user", "content": "\n".join(training_str_list[:training_text_num])},
-            {"role": "assistant", "content": "好的，我已经学会了如何分析，你随时可以向我提供新的文本，我会直接把密度估计返回给你。"},
-            {"role": "user", "content": f"{testing_str_list[25]}"}
-        ])
-    response_value = response["choices"][0]["message"]["content"].strip()
-    print(response_value)
+    for target_index in range(len(target_token_list)):
+        df = target_token_list[target_index]
+        full_text = ""
+        for token_index in range(df.shape[0]):
+            full_text += df.iloc[token_index]["tokens"]
+            if token_index + 1 < df.shape[0] - 1 and df.iloc[token_index]["row"] != df.iloc[token_index + 1]["row"]:
+                cur_row = df.iloc[token_index]["row"][0]
+                next_row = df.iloc[token_index + 1]["row"][0]
+                for row_index in range(next_row - cur_row):
+                    full_text += "\n"
+                if df.iloc[token_index]["split"] == 1:
+                    next_token = df.iloc[token_index + 1]["tokens"]
+                    # take away the (.*) in next token
+                    next_token = re.sub(r"\(.+\)", "", next_token)
+                    df["tokens"][token_index + 1] = next_token
+            token_list = df["tokens"].tolist()
+            token_list_str = "[" + ",".join([f"({i}, '{token_list[i]}')" for i in range(len(token_list))]) + "]"
+            prompt_str = "{" + f"'full_text': '{full_text}', 'token_list': {token_list_str}" + "}"
+
+            response = openai.ChatCompletion.create(
+                model="gpt-4-0613",
+                messages=[
+                    {"role": "system", "content": "你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我三个指标，一是每个分词与文章的关联程度，二是每个分词本身的阅读难度，三是这个分词在前后文中的阅读难度。"},
+                    {"role": "user", "content": "我会解释一下我将提供的数据及其含义。\n"
+                                                "我会向你提供一句话的完整文本与其对应的分词及每个分词序号。如{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}\n"
+                                                "full_text中的'\n'代表换行。\n"
+                                                "你需要给我的返回是一个列表，其中包含8个成分：分词序号，分词，关联程度打分（rele），关联程度打分确定度（rele_cred），分词本身阅读难度打分（diff），分词本身阅读难度打分确定度（diff_cred），分词上下文阅读难度打分（diff_context），分词上下文阅读难度打分确定度（diff_context_cred）。"
+                                                "关联程度打分、分词本身阅读难度打分、分词上下文阅读难度打分的分数都是从1到5，分数低代表关联度低或难度低，分数高代表关联度高或难度高。确信度打分为0到1，分数低代表不确定，分数高代表确定。\n"
+                                                "关联程度代表一个分词与这篇文章想要传达的核心意思之间的关联有多大；分词本身难度，代表仅看这个分词，它有多难理解，如一些专业名词的难度就很高（5分），而一些助词、标点，难度就很低（1分）；分词上下文难度，指放在上下文中，一个分词是否容易理解，如叠词单看时容易理解，但放在上下文中则会引发与上下文内容相关的额外的思考。"
+                                                "3个关于打分的确定度，可以被理解为不同人是否都会认可你给出的打分，当确定度高时，代表大部分人都会认可你的打分；当确定度低时，代表只有少部分人会认可你的打分。\n"                                                
+                                                "注意，打分过程中，不可增加、删除或修改token。你需要返回所有token的打分结果，打分时间可以较长，但绝对不可以只返回部分结果。"},
+                    {"role": "user", "content": "接下来我们模拟一下输入和返回的结果。本次模拟中打分的结果不具有参考性。\n"},
+                    {"role": "user", "content": "。{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}"},
+                    {"role": "assistant", "content": "{'return_list': [{'index': 0, 'token': '今天', 'rele': 4, 'rele_cred': 0.8, 'diff': 2, 'diff_cred': 0.9, 'diff_context': '3', 'diff_context_cred': 0.7}], "
+                                                     "[{'index': 1, 'token': '天气', 'rele': 5, 'rele_cred': 0.8, 'diff': 2, 'diff_cred': 0.9, 'diff_context': '3', 'diff_context_cred': 0.7}], "
+                                                     "[{'index': 2, 'token': '很好', 'rele': 4, 'rele_cred': 0.8, 'diff': 1, 'diff_cred': 0.9, 'diff_context': '2', 'diff_context_cred': 0.7}]}"},
+                    {"role": "user", "content": "你做得很好，接下来请按相同的格式给我返回，但之后的打分需要是正确的打分。\n"},
+                    {"role": "assistant", "content": "好的，我已经理解你的任务了。你可以给我你需要打分的文本了。\n"},
+                    {"role": "user", "content": f"{prompt_str}"}],
+            )
+
+            response_str = response["choices"][0]["message"]["content"].strip()
+            print(response_str)
+            print()
 
 
 '''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
