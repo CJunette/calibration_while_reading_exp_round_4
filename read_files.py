@@ -144,3 +144,21 @@ def change_single_quotation_to_double_quotation(x):
     return x_changed
 
 
+def read_reading_data():
+    file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path)
+
+    reading_data_list_1 = []
+
+    for file_index in range(len(file_list)):
+        reading_file_path = f"{file_path}/{file_list[file_index]}/reading/"
+        reading_file_list = os.listdir(reading_file_path)
+        reading_data_list_2 = []
+        for reading_file_index in range(len(reading_file_list)):
+            reading_df = pd.read_csv(f"{reading_file_path}{reading_file_list[reading_file_index]}", encoding="utf-8_sig")
+            reading_data_list_2.append(reading_df)
+        reading_data_list_1.append(reading_data_list_2)
+
+    return reading_data_list_1
+
+

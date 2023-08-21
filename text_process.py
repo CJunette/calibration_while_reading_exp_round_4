@@ -166,7 +166,7 @@ def tokenize_exp_text_sorted():
         text_index = text_dict["text_index"]
         print(text_index)
         # if text_index != f'{configs.temp_token_debug_num}':
-        #     continue
+        #     continue # 只调整部分数据，以提高效率。 # FIXME 不用时可以注释掉。
         text = text_dict["text"].replace(" ", "\\")
 
         fine_tokens, coarse_tokens = tokenize_with_hanlp(HanLP, text)
@@ -285,7 +285,7 @@ def add_text_unit_index_to_tokens():
         coarse_tokens_df = pd.read_csv(f"{coarse_tokens_path_prefix}{coarse_tokens_file_name}", encoding="utf-8_sig", skip_blank_lines=False)
         text_unit_list = sorted_text_mapping[file_index]
         # if file_index != configs.temp_token_debug_num:
-        #     continue
+        #     continue # 只调整部分数据，以提高效率。 # FIXME 不用时可以注释掉。
         print(file_index)
         fine_text_unit_component_list, fine_row_list = find_text_unit_of_tokens(text_unit_list, fine_tokens_df)
         coarse_text_unit_component_list, coarse_row_list = find_text_unit_of_tokens(text_unit_list, coarse_tokens_df)

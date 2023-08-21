@@ -443,7 +443,7 @@ def get_fine_tune_prediction(test_data_list, validation_data_list, test_data_ind
             print(f"error in {test_data_index}, {e}, {gpt_completion_str}")
 
 
-def save_gpt_fine_tune_prediction(token_type):
+def save_gpt_fine_tune_prediction(token_type, save_file_index=None):
     test_data_file_path = f"data/fine_tune/testing_data/{configs.round}_{token_type}_testing_data_ver_{configs.fine_tune_ver}.jsonl"
     test_data_list = []
     with open(test_data_file_path, "r") as f:
@@ -458,6 +458,11 @@ def save_gpt_fine_tune_prediction(token_type):
             entry = json.loads(line)
             validation_data_list.append(entry)
 
+    # 保存的数据中没有包含para_id这类的信息，因此需要通过token_density的数据来获取。
+    df_token_density = read_files.read_token_density_of_token_type(token_type)[0]
+    df_token_density_for_test = df_token_density[df_token_density["para_id"] >= configs.fine_tune_training_para_num]
+    para_id_list = df_token_density_for_test["para_id"].tolist()
+
     prompt_list = []
     test_completion_list = []
     gpt_completion_list = []
@@ -466,10 +471,13 @@ def save_gpt_fine_tune_prediction(token_type):
 
     args_list = []
     while test_data_index < len(test_data_list):
+        if para_id_list[test_data_index] not in [90, 91, 92, 93, 94]:
+            test_data_index += 1
+            continue # 只选择部分数据结果保存，以加快效率。# FIXME 不用时可以注释掉。
         args_list.append((test_data_list, validation_data_list, test_data_index))
         test_data_index += 1
 
-    with Pool(8) as p:
+    with Pool(16) as p:
         result_list = p.starmap(get_fine_tune_prediction, args_list)
 
     for result_index in range(len(result_list)):
@@ -494,7 +502,11 @@ def save_gpt_fine_tune_prediction(token_type):
     save_path = f"data/fine_tune/{configs.fine_tune_model_name.replace(':', '_')}/"
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    save_name = f"{save_path}{configs.round}_{token_type}_result_005.csv"
+    if save_file_index is None:
+        save_name = f"{save_path}{configs.round}_{token_type}_result_001.csv"
+    else:
+        save_name = f"{save_path}{configs.round}_{token_type}_result_{str(save_file_index).zfill(3)}.csv"
+
     df.to_csv(save_name, index=False, encoding="utf-8_sig")
 
 
@@ -625,8 +637,9 @@ def save_fine_tune_data(token_type="fine"):
 
 
 def test_gpt_fine_tune_prediction(token_type="fine"):
-    save_gpt_fine_tune_prediction(token_type) # 保存gpt预测结果。
-    # check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
+    # for index in range(1, 11):
+    #     save_gpt_fine_tune_prediction(token_type, index) # 保存gpt预测结果。
+    check_gpt_fine_tune_prediction_stability() # 检查多次返回的预测结果是否稳定。
     # read_and_visualize_gpt_prediction(token_type) # 根据某次返回结果，检查其与实际结果是否接近。
 
 

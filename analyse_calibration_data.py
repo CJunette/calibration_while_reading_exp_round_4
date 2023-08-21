@@ -73,6 +73,9 @@ def visualize_original_cali_centroids(file_path):
     ax.set_ylim(0, 1200)
     ax.invert_yaxis()
 
+    # centroid_list_1d = np.array(centroid_list).reshape(-1, 2).tolist()
+    # list_std_cali_1d = np.array(list_std_cali).reshape(-1, 2).tolist()
+
     for i in range(len(centroid_list)):
         for j in range(len(centroid_list[0])):
             # color = None

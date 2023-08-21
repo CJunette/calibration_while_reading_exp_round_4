@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 import analyse_calibration_data
+import analyse_reading_data
 import configs
 import get_reading_density
 import read_files
@@ -29,12 +30,17 @@ if __name__ == '__main__':
     # temporary_functions.split_data_in_round_1() # 用来将round1中合并的数据拆分成其他round那样的格式。
     # temporary_functions.split_seeso_data() # 用来将seeso数据拆分成其他round那样的格式。
     # temporary_functions.modify_round_1_reading_data_using_calibration() # 用于将round_1的数据通过calibration估算出的单应性矩阵调整到正确的位置。
+    # temporary_functions.get_tokens_of_certain_para("fine", [90, 91, 92, 93, 94]) # 用于获取某个段落的token。
+
+    # analyse_reading_data.render_point_density_hist()
+    # analyse_reading_data.match_manual_weight_and_gaze_density()
+    analyse_reading_data.down_sample_reading()
 
     # analyse_calibration_data.visualize_original_cali_centroids(f"data/back_up_gaze_data/{configs.round}/reformat_data/20230724_101920/calibration.csv")
 
     # get_token_info()
     # get_density()
-    talk_with_GPT.save_fine_tune_data()
+    # talk_with_GPT.save_fine_tune_data()
     # talk_with_GPT.test_gpt_fine_tune_prediction()
 
     # talk_with_GPT.get_gpt_prediction()

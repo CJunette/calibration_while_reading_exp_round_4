@@ -256,3 +256,14 @@ def generate_reading_data_90_to_94():
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         df_new.to_csv(save_path + f"{file_list[file_index]}_90-94.csv", encoding="utf-8_sig", index=False)
+
+
+def get_tokens_of_certain_para(token_type, para_list):
+    for para_index in para_list:
+        file_name = f"data/text/{configs.round}/tokens/{token_type}_tokens/{para_index}.csv"
+        df = pd.read_csv(file_name, encoding="utf-8_sig", index_col=False)
+        token_list = []
+        for token_index in range(df.shape[0]):
+            token_list.append((token_index, df.iloc[token_index]["tokens"]))
+        print(token_list)
+
