@@ -164,7 +164,7 @@ def prepare_text_for_gpt(df_list, bool_training=False):
     return str_list
 
 
-def send_single_rate_request(tokens, prompt_str, index_str, index_credibility_str, index_explain_str, index_quote_explain_str):
+def send_single_rate_request(tokens, reading_analyse_dict, full_text,  prompt_str, index_str, index_credibility_str, index_explain_str, index_quote_explain_str):
     start_using_IDE()
     set_openai()
 
@@ -173,16 +173,25 @@ def send_single_rate_request(tokens, prompt_str, index_str, index_credibility_st
             model="gpt-4-0613",
             messages=[
                 {"role": "system", "content": f"你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我一个指标：{index_str}。"},
+                {"role": "user", "content": "你需要打分的文本如下（文本中的\\n代表换行，你可以忽略）：\n"
+                                            f"{full_text}\n"
+                                            f"在之前的交流中，你告诉我了一些关于这篇文本的信息：\n"
+                                            f"其类型为：{reading_analyse_dict['type']}\n"
+                                            f"其关键词为：{reading_analyse_dict['keywords']}\n"
+                                            f"应该关注的内容为：{reading_analyse_dict['what_to_focus']}"
+                                            f"具体该关注的分词为：{reading_analyse_dict['focus_words']}"
+                                            f"不该关注的内容为：{reading_analyse_dict['what_to_ignore']}"
+                                            f"具体不该关注的分词为：{reading_analyse_dict['ignored_words']}"},
+                {"role": "assistant", "content": "好的，我理解你对这篇文章的描述了。接下来请告诉我你需要我执行的任务细节与我们间通信的格式。"},
                 {"role": "user", "content": "我会解释一下我将提供的数据及其含义。\n"
-                                            "我会向你提供一句话的完整文本与其对应的分词及每个分词序号。如{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}\n"
-                                            "full_text中的'\n'代表换行。\n"
+                                            "我会向你提供之前文本的分词及每个分词序号。如{'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}\n"
                                             f"你需要给我的返回是一个列表，其中包含4个成分：分词序号，分词，{index_str}，{index_credibility_str}。"
                                             f"{index_explain_str}\n"
                                             f"{index_quote_explain_str}\n"
                                             "关于打分的确定度，可以被理解为不同人是否都会认可你给出的打分，当确定度高时，代表大部分人都会认可你的打分；当确定度低时，代表只有少部分人会认可你的打分。\n"
                                             "注意，打分过程中，不可增加、删除或修改token。你需要返回所有token的打分结果，打分时间可以较长，但绝对不可以只返回部分结果。"},
-                {"role": "user", "content": "接下来我们模拟一下输入和返回的结果。本次模拟中打分的结果不具有参考性。\n"},
-                {"role": "user", "content": "。{'full_text': '今天天气很好', 'token_list': [[0, '今天'], [1, '天气'], [2, '很好']]}"},
+                {"role": "user", "content": "接下来我们模拟一下输入和返回的结果。本次模拟中打分的结果不具有参考性。模拟采用的文本为'今天天气很好'。\n"},
+                {"role": "user", "content": "。{'token_list': [[0, '今天'], [1, '天气'], [2, '很好']]}"},
                 {"role": "assistant", "content": "{'return_list': [[0, '今天', 4, 0.8], [1, '天气', 5, 0.8], [2, '很好', 5, 0.8]]}"},
                 {"role": "user", "content": "你做得很好，接下来请按相同的格式给我返回，但之后的打分需要是正确的打分。\n"},
                 {"role": "assistant", "content": "好的，我已经理解你的任务了。你可以给我你需要打分的文本了。\n"},
@@ -242,19 +251,48 @@ def send_article_analyse_request(full_text):
     response = openai.ChatCompletion.create(
         model="gpt-4-0613",
         messages=[
-            {"role": "system", "content": f"你是一个分析文本阅读行为的专家。你需要找出用户在快速阅读时，最可能关注的那些能够“吸引眼球”的词语。文本中的'\\n'代表换行，你可以忽视。"},
-            {"role": "user", "content": "我会给你一系列文本，你需要告诉我这段文本的类型是什么（新闻、推荐、微博、评论还是其他类型），可能是在哪个平台发布的。"
-                                        "以及对于这个平台的用户而言，这些类型的文本应该着重关注哪些内容（what_to_focus，用自然语言描述）；这篇文章中主要关注的文字（分词）是哪些（focus_words）；这类文本不该关注的内容是哪些（what_to_ignore，用自然语言描述）；这篇文章中没有关注的文字（分词）是哪些（ignored_words）。\n"
-                                        "你需要用字典返回这五个内容，如"
-                                        "{'type': '这段文本可以被归类为一种“评论/社交媒体评论”类型。这是一篇关于青旅拒绝35岁以上顾客的政策的讨论，显然是发生在一个类似知乎的在线问答平台。', "
-                                        "'what_to_focus': '讨论或评论的主题，评论者的态度或立场，关键论点，逻辑推理，以及可能引发进一步讨论或争议的点。', "
-                                        "'what_to_ignore': '过于冗长的背景说明，一些无关的插入语或过度的个人情绪。'"
-                                        "'focus_words': '在这段文本中，主要的关键词或者说是分词可能包括“北京”（地点）、“青旅”（主题/对象），“35岁以上顾客”（讨论的焦点），“生活习惯不同，不好管理”（拒绝的原因），“不能认定违规”（法律意见），以及“歧视”、“收入低”、“素质差性格有问题”、“因果关系”（讨论或争辩的关键点）。'"
-                                        "'ignored_words: '“知乎”，以及一个具体的引用（很多支持歧视的回答依据基本是“一个人如果到35岁还住青旅，说明这个人。。。（收入低素质差性格有问题等等）”）。这个引用合并在了我关注的文字中，因为我会更关注该引用中的主要观点，而不是引用本身。'}\n"
+            {"role": "system",
+             "content": f"你是一个分析文本阅读行为的专家。你需要找出用户在快速阅读时，最可能关注的那些能够“吸引眼球”的词语。注意，由于用户是在做快速阅读，所以对于首尾内容关注会更多，对于中间的内容则会更有选择性。"},
+            {"role": "user", "content": "我会给你一段文本，你需要告诉我这段文本的类型是什么（新闻、推荐、微博、评论还是其他类型），可能是在哪个平台发布的；这篇文章的5个关键词；"
+                                        "以及对于这个平台的用户而言，这些类型的文本应该着重关注哪些内容（what_to_focus，用自然语言描述，尽量全面）；基于关键词与着重关注内容，用户在阅读这篇文章中主要关注的文字（分词）（focus_words）；"
+                                        "这类文本非关注的内容是哪些（what_to_ignore，用自然语言描述，尽量全面）；基于与关键词差别及着非重关注内容，用户在阅读这篇文章时没有关注的文字（分词）是哪些（ignored_words）。"
+                                        "请注意，值得关注的内容与不值得关注的内容间不应该存在冲突（即对于2个相似的概念，不应该一个出现在值得关注，另一个出现在不值得关注）。你可以尽可能多地找出需要关注和不需要关注的内容。\n"
+                                        "对于关注和不关注的划分，一个相对统一的标准是文本中“吸引眼球”的、极具话题性的词语一般都会被关注。"
+                                        "但此外，不同类型的文本会有不同的标准。"
+                                        "比如对于新闻，用户可能更关注新闻的主题、背景、趋势，而不关注具体的历史背景、原因探讨、详细的阐述部分；"
+                                        "对于观点阐述类的文本，用户会更关注观点的核心内容、造成该观点的原因、作者对观点的举例、作者观点与主流想法的冲突点，而不关注那些大家都心知肚明的内容；"
+                                        "对于评论类文本，用户会关注对被评论对象的细节描写，而不关注那些主观的印象。"
+                                        "假设具体文本为："
+                                        "“饭圈”产业价值千亿却走向癫狂，谁该负责"
+                                        "“饭圈”文化愈演愈烈，粉丝与网络水军混杂，因各种立场、观点、利益冲突，而引发各类网上互撕互黑等风波。6月15日，中央网信办宣布开展为期两个月的“饭圈”乱象整治专项行动，聚焦明星榜单、热门话题、粉丝社群、互动评论等环节。突如其来的强监管，显示近年狂飙突进的“粉丝经济”走到了十字路口。"
+                                        "官方文件直接点名“饭圈”，前所未见。“饭圈”是一个近年走红的网络用语，主要指娱乐明星粉丝（Fans）组成的圈子。不同于过去所谓“追星族”，“饭圈”更多是基于社群网络的半职业化组织，一些娱乐明星的粉丝业已形成职业分工运作模式，包括“粉头”“数据女工”等新型角色，深度参与明星日常活动，为明星造热度，维持形象和商业价值。\n"
+                                        "你需要用字典返回以下六个内容，如"
+                                        "{'type': '这段文本类型是新闻，可能在新闻网站或新闻APP上发布。', "
+                                        "'keywords': ['饭圈', '整治', '乱象', '娱乐明星', '产业价值千亿']"
+                                        "'what_to_focus': '读者在此类文本中应关注的内容包括文中谈到的主要问题和情况，即“饭圈”的现状以及由这种现状产生的问题。同时，他们还需要关注由官方提出的各种应对策略，以及这些策略预计会对所关注的问题产生的影响。', "
+                                        "'what_to_ignore': '在这段文本中，需要关注的分词包括“饭圈”、“癫狂”、“中央网信办”、“整治专项行动”、“粉丝经济”、“十字路口”、“粉丝”、“半职业化组织”、“粉头”、“数据女工”。这些词语各自代表了此文的主题，背景，趋势，而它们之间的关系则构成了文章的主要论述。'"
+                                        "'focus_words': '在快速阅读时，较具体的历史背景、原因探讨、详细的阐述部分可以忽略，比如“饭圈”的起源、粉丝分工运作模式等内容。这些内容对于理解文章的主旨和大意没有直接帮助，特别是在时间紧张的情况下。'"
+                                        "'ignored_words: '可以忽略的分词包括“追星族”、“网络用语”、“走红”、“商业价值”。这些词对于文章的核心观点（饭圈乱象的现状以及应对策略）的理解并没有决定性的影响。'}\n"                                        
                                         "文本如下：\n"
                                         f"{full_text}"
-                                        }]
-    )
+                                        }])
+
+    response_str = response["choices"][0]["message"]["content"].strip()
+    print(response_str)
+
+    try:
+        response_value = json.loads(response_str.replace("\'", "\""))
+        bool_check = False
+        key_list = ['type', 'what_to_focus', 'what_to_ignore', 'focus_words', 'ignored_words']
+        for key in key_list:
+            if key not in response_value.keys():
+                print("token not in response_value", response_str)
+                bool_check = True
+                raise Exception
+        if not bool_check:
+            return response_value
+    except Exception as e:
+        print(e, response_str)
 
 
 def _save_gpt_prediction(token_type):
@@ -267,6 +305,14 @@ def _save_gpt_prediction(token_type):
     target_token_list = []
     for para_index in target_para_index:
         target_token_list.append(token_list[para_index])
+
+    raw_full_text_list = read_files.read_sorted_text()
+    full_text_list = []
+    for para_index in target_para_index:
+        full_text_list.append([raw_full_text_list[para_index]["text"]])
+
+    with Pool(8) as p:
+        reading_analyse_result_list = p.starmap(send_article_analyse_request, full_text_list)
 
     text_unit_file_path = f"data/text/{configs.round}/text_sorted_mapping.csv"
     df_text_unit = pd.read_csv(text_unit_file_path, encoding="utf-8_sig")
@@ -297,7 +343,8 @@ def _save_gpt_prediction(token_type):
         for response_index in range(len(token_list_divided)):
             token_list_divided_str = "[" + ",".join([f"({i + response_index * max_num_once}, '{token_list_divided[response_index][i]}')" for i in range(len(token_list_divided[response_index]))]) + "]"
 
-            prompt_str = "{" + f"'full_text': '{full_text}', 'token_list': {token_list_divided_str}" + "}"
+            # prompt_str = "{" + f"'full_text': '{full_text}', 'token_list': {token_list_divided_str}" + "}"
+            prompt_str = "{" + f"'token_list': {token_list_divided_str}" + "}"
             # response = openai.ChatCompletion.create(
             #     model="gpt-4-0613",
             #     messages=[
@@ -333,7 +380,7 @@ def _save_gpt_prediction(token_type):
             #                                                "分词与文本的相关性", "对相关性评分的可信度",
             #                                                "分词与文本的相关性指的是该分词是否与全文的主要含义有明显、强烈的关联。有些分词（如标点、一些助词）并不影响文本的主要含义，完全可以删去，这些分词的相关性就很弱；有些分词则与文本的主要含义密切相关。",
             #                                                "分词与文本的相关性打分从1分到5分，1分代表该分词与文本的主要内容没有关联，5分代表该分词与文本主要内容关联十分明显。")
-            # novelty_response_value = send_single_request(token_list_divided[response_index], prompt_str,
+            # response_value = send_single_request(token_list_divided[response_index], prompt_str,
             #                                                "分词信息指数", "对信息指数的可信度",
             #                                                "分词指数指的是在完成前文的阅读后，该分词是否带来了新的、不同的信息。有些分词（如标点、助词等）并没有带来新的信息，有些分词（如时间、地点等）带来了一些补充信息，有些分词（如与文章主要含义相关性极大的分词）则带来了较多的信息。",
             #                                                "分词与文本的相关性打分从1分到5分，1分代表该分词没有带来额外的信息，5分代表该分词带来了明显不同于之前的信息。")
@@ -349,22 +396,28 @@ def _save_gpt_prediction(token_type):
             #                               "有些分词（如标点、助词等）并没有什么有用的信息，则停留时间会很短；有些分词（如专业词汇等）一般不常见，则会有略长的停留时间；有些分词与文章主要含义相关性极大，则会停留较久。",
             #                               "阅读停留时间打分从1分到5分，1分代表在该分词上的停留时间很短，5分代表在该分词上的停留时间很长。"])
 
-            args_list.append([token_list_divided[response_index], prompt_str,
-                                          "阅读停留时间", "对阅读停留时间的可信度",
-                                          "阅读停留时间指的是你认为用户可能会在词汇上停留的时间。具体地说，它包括了词汇的含义，词汇的熟悉/陌生程度，词汇在文章中起到的作用，词汇是否容易预测等。"
-                                          "同时，不同类别的文本，用户阅读的停留倾向也是不同的，如对于商品介绍类的文本，用户会更加关注参数、功能、价格等；对于观点输出类的文本，用户会更关注观点内容、论据等；对于推荐类的文本，用户会更关注推荐对象、理由等。"
-                                          "注意，这段文本阅读时用户可能并没有非常仔细地逐字阅读，只是简单的扫过了关键信息。"
-                                          "有些分词（如标点、助词等）并没有什么有用的信息，则停留时间会很短；有些分词（如专业词汇等）一般不常见，则会有略长的停留时间；有些分词与文章主要含义相关性极大，则会停留较久。",
-                                          "阅读停留时间打分从1分到5分，1分代表在该分词上的停留时间很短，5分代表在该分词上的停留时间很长。"])
+            args_list.append([token_list_divided[response_index], reading_analyse_result_list[target_index], full_text, prompt_str,
+                                          "阅读关注程度", "对阅读关注程度的可信度",
+                                          "阅读代表用户在阅读时会多关注该分词，用户越关注一个分词，阅读时在这个分词上的停留时间越短。简单地说，它包括了词汇的含义，词汇的熟悉/陌生程度，词汇在文章中起到的作用，词汇是否容易预测等。"
+                                          # "同时，不同类别的文本，用户阅读的停留倾向也是不同的，如对于商品介绍类的文本，用户会更加关注参数、功能、价格等；对于观点输出类的文本，用户会更关注观点内容、论据等；对于推荐类的文本，用户会更关注推荐对象、理由等。"
+                                          # "注意，这段文本阅读时用户可能并没有非常仔细地逐字阅读，只是简单的扫过了关键信息。"
+                                          # "有些分词（如标点、助词等）并没有什么有用的信息，则停留时间会很短；有些分词（如专业词汇等）一般不常见，则会有略长的停留时间；有些分词与文章主要含义相关性极大，则会停留较久。",
+                                          "此外，之前提供的对文本的总结与分析同样重要，你需要结合之前分析给出的文本类型、关键词、哪些内容应该关注、哪些内容不应该关注等信息，来判断用户在阅读时会关注哪些内容。",
+                                          "阅读关注程度打分从1分到5分，"
+                                          "1分代表完全不关注这个分词，分析中提到不该关注的信息及标点等都属于这一类；"
+                                          "2分代表该分词不会被特意关注，它几乎没有传递有用的信息，一些连接词、助词或易从上文推测的词语可能会属于这一类；"
+                                          "3分代表该分词会被简单关注，它传递了一些有用的信息，但与文章核心内容的联系不那么紧密；"
+                                          "4分代表该分词会被关注，它与分词中提到的应该关注的信息存在较强的相关性；"
+                                          "5分代表极为注意该分词，分析中提到的应该关注的信息属于这一类。"])
 
-        with Pool(8) as p:
-            novelty_all_list = p.starmap(send_single_rate_request, args_list)
+        with Pool(6) as p:
+            result_list = p.starmap(send_single_rate_request, args_list)
 
-        novelty_response_value = []
-        for novelty_list in novelty_all_list:
-            novelty_response_value.extend(novelty_list)
+        response_value = []
+        for result in result_list:
+            response_value.extend(result)
 
-        collect_index_and_save(df_text_unit, target_para_index[target_index], novelty_response_value, df_target_token, token_type, "duration_third")
+        collect_index_and_save(df_text_unit, target_para_index[target_index], response_value, df_target_token, token_type, "attention_first")
 
 
 '''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
