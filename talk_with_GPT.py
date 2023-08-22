@@ -164,11 +164,78 @@ def prepare_text_for_gpt(df_list, bool_training=False):
     return str_list
 
 
-def _save_gpt_prediction(token_type):
+def send_single_request(tokens, prompt_str, index_str, index_credibility_str, index_explain_str, index_quote_explain_str):
     start_using_IDE()
     set_openai()
 
-    # TODO 这里的df_density_for_testing目前只有一个文件，之后可能也会变成多个文件，需要重新修改一下这里相关的代码。
+    while True:
+        response = openai.ChatCompletion.create(
+            model="gpt-4-0613",
+            messages=[
+                {"role": "system", "content": f"你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我一个指标：{index_str}。"},
+                {"role": "user", "content": "我会解释一下我将提供的数据及其含义。\n"
+                                            "我会向你提供一句话的完整文本与其对应的分词及每个分词序号。如{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}\n"
+                                            "full_text中的'\n'代表换行。\n"
+                                            f"你需要给我的返回是一个列表，其中包含4个成分：分词序号，分词，{index_str}，{index_credibility_str}。"
+                                            f"{index_explain_str}\n"
+                                            f"{index_quote_explain_str}\n"
+                                            "关于打分的确定度，可以被理解为不同人是否都会认可你给出的打分，当确定度高时，代表大部分人都会认可你的打分；当确定度低时，代表只有少部分人会认可你的打分。\n"
+                                            "注意，打分过程中，不可增加、删除或修改token。你需要返回所有token的打分结果，打分时间可以较长，但绝对不可以只返回部分结果。"},
+                {"role": "user", "content": "接下来我们模拟一下输入和返回的结果。本次模拟中打分的结果不具有参考性。\n"},
+                {"role": "user", "content": "。{'full_text': '今天天气很好', 'token_list': [[0, '今天'], [1, '天气'], [2, '很好']]}"},
+                {"role": "assistant", "content": "{'return_list': [[0, '今天', 4, 0.8], [1, '天气', 5, 0.8], [2, '很好', 5, 0.8]]}"},
+                {"role": "user", "content": "你做得很好，接下来请按相同的格式给我返回，但之后的打分需要是正确的打分。\n"},
+                {"role": "assistant", "content": "好的，我已经理解你的任务了。你可以给我你需要打分的文本了。\n"},
+                {"role": "user", "content": f"{prompt_str}"}],
+        )
+
+        response_str = response["choices"][0]["message"]["content"].strip()
+        print(response_str)
+
+        try:
+            response_value = json.loads(response_str.replace("\'", "\""))["return_list"]
+            bool_check = False
+            for token_index in range(len(tokens)):
+                if tokens[token_index] != response_value[token_index][1]:
+                    print("token not in response_value", response_str)
+                    bool_check = True
+                    raise Exception
+            if not bool_check:
+                return response_value
+        except Exception as e:
+            print(e, response_str)
+
+
+def collect_index_and_save(df_text_unit, para_id, response_value, df_target_token, token_type, index_str):
+    index_list = []
+    index_credibility_list = []
+    text_unit_list = []
+    para_id_list = []
+    df_text_unit_of_para_id = df_text_unit[df_text_unit["para_id"] == para_id]
+    for token_index in range(len(response_value)):
+        text_unit_component = df_target_token.iloc[token_index]["text_unit_component"][0]
+        row_index = df_target_token.iloc[token_index]["row"][0]
+        relevance = response_value[token_index][2]
+        relevance_credibility = response_value[token_index][3]
+        for col_index in text_unit_component:
+            text_unit = df_text_unit_of_para_id[df_text_unit_of_para_id["row"] == row_index][df_text_unit_of_para_id["col"] == col_index]["word"].iloc[0]
+            text_unit_list.append(text_unit)
+            index_list.append(relevance)
+            index_credibility_list.append(relevance_credibility)
+            para_id_list.append(para_id)
+
+    new_df = pd.DataFrame({
+        'text_unit': text_unit_list,
+        f'weight': index_list,
+        f'weight_credibility': index_credibility_list,
+        "para_id": para_id_list
+    })
+    # save_path = f"data/text/{configs.round}/weight/temp/8_21_{token_type}_relevance_from_gpt_{target_para_index[target_index]}.csv"
+    save_path = f"data/text/{configs.round}/weight/temp/8_21_{token_type}_{index_str}_from_gpt_{para_id}.csv"
+    new_df.to_csv(save_path, encoding='utf-8_sig', index=False)
+
+
+def _save_gpt_prediction(token_type):
     # df_density_for_training, df_density_for_testing, df_training_statistic, df_testing_statistic = prepare_data(token_type)
     # training_str_list = prepare_text_for_gpt(df_density_for_training, bool_training=True)
     # testing_str_list = prepare_text_for_gpt(df_density_for_testing, bool_training=False)
@@ -179,50 +246,103 @@ def _save_gpt_prediction(token_type):
     for para_index in target_para_index:
         target_token_list.append(token_list[para_index])
 
+    text_unit_file_path = f"data/text/{configs.round}/text_sorted_mapping.csv"
+    df_text_unit = pd.read_csv(text_unit_file_path, encoding="utf-8_sig")
+
     for target_index in range(len(target_token_list)):
-        df = target_token_list[target_index]
+        df_target_token = target_token_list[target_index]
         full_text = ""
-        for token_index in range(df.shape[0]):
-            full_text += df.iloc[token_index]["tokens"]
-            if token_index + 1 < df.shape[0] - 1 and df.iloc[token_index]["row"] != df.iloc[token_index + 1]["row"]:
-                cur_row = df.iloc[token_index]["row"][0]
-                next_row = df.iloc[token_index + 1]["row"][0]
+
+        for token_index in range(df_target_token.shape[0]):
+            full_text += df_target_token.iloc[token_index]["tokens"]
+            if token_index + 1 < df_target_token.shape[0] - 1 and df_target_token.iloc[token_index]["row"] != df_target_token.iloc[token_index + 1]["row"]:
+                cur_row = df_target_token.iloc[token_index]["row"][0]
+                next_row = df_target_token.iloc[token_index + 1]["row"][0]
                 for row_index in range(next_row - cur_row):
                     full_text += "\n"
-                if df.iloc[token_index]["split"] == 1:
-                    next_token = df.iloc[token_index + 1]["tokens"]
+                if df_target_token.iloc[token_index]["split"] == 1:
+                    next_token = df_target_token.iloc[token_index + 1]["tokens"]
                     # take away the (.*) in next token
                     next_token = re.sub(r"\(.+\)", "", next_token)
-                    df["tokens"][token_index + 1] = next_token
-            token_list = df["tokens"].tolist()
-            token_list_str = "[" + ",".join([f"({i}, '{token_list[i]}')" for i in range(len(token_list))]) + "]"
-            prompt_str = "{" + f"'full_text': '{full_text}', 'token_list': {token_list_str}" + "}"
+                    df_target_token["tokens"][token_index + 1] = next_token
 
-            response = openai.ChatCompletion.create(
-                model="gpt-4-0613",
-                messages=[
-                    {"role": "system", "content": "你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我三个指标，一是每个分词与文章的关联程度，二是每个分词本身的阅读难度，三是这个分词在前后文中的阅读难度。"},
-                    {"role": "user", "content": "我会解释一下我将提供的数据及其含义。\n"
-                                                "我会向你提供一句话的完整文本与其对应的分词及每个分词序号。如{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}\n"
-                                                "full_text中的'\n'代表换行。\n"
-                                                "你需要给我的返回是一个列表，其中包含8个成分：分词序号，分词，关联程度打分（rele），关联程度打分确定度（rele_cred），分词本身阅读难度打分（diff），分词本身阅读难度打分确定度（diff_cred），分词上下文阅读难度打分（diff_context），分词上下文阅读难度打分确定度（diff_context_cred）。"
-                                                "关联程度打分、分词本身阅读难度打分、分词上下文阅读难度打分的分数都是从1到5，分数低代表关联度低或难度低，分数高代表关联度高或难度高。确信度打分为0到1，分数低代表不确定，分数高代表确定。\n"
-                                                "关联程度代表一个分词与这篇文章想要传达的核心意思之间的关联有多大；分词本身难度，代表仅看这个分词，它有多难理解，如一些专业名词的难度就很高（5分），而一些助词、标点，难度就很低（1分）；分词上下文难度，指放在上下文中，一个分词是否容易理解，如叠词单看时容易理解，但放在上下文中则会引发与上下文内容相关的额外的思考。"
-                                                "3个关于打分的确定度，可以被理解为不同人是否都会认可你给出的打分，当确定度高时，代表大部分人都会认可你的打分；当确定度低时，代表只有少部分人会认可你的打分。\n"                                                
-                                                "注意，打分过程中，不可增加、删除或修改token。你需要返回所有token的打分结果，打分时间可以较长，但绝对不可以只返回部分结果。"},
-                    {"role": "user", "content": "接下来我们模拟一下输入和返回的结果。本次模拟中打分的结果不具有参考性。\n"},
-                    {"role": "user", "content": "。{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}"},
-                    {"role": "assistant", "content": "{'return_list': [{'index': 0, 'token': '今天', 'rele': 4, 'rele_cred': 0.8, 'diff': 2, 'diff_cred': 0.9, 'diff_context': '3', 'diff_context_cred': 0.7}], "
-                                                     "[{'index': 1, 'token': '天气', 'rele': 5, 'rele_cred': 0.8, 'diff': 2, 'diff_cred': 0.9, 'diff_context': '3', 'diff_context_cred': 0.7}], "
-                                                     "[{'index': 2, 'token': '很好', 'rele': 4, 'rele_cred': 0.8, 'diff': 1, 'diff_cred': 0.9, 'diff_context': '2', 'diff_context_cred': 0.7}]}"},
-                    {"role": "user", "content": "你做得很好，接下来请按相同的格式给我返回，但之后的打分需要是正确的打分。\n"},
-                    {"role": "assistant", "content": "好的，我已经理解你的任务了。你可以给我你需要打分的文本了。\n"},
-                    {"role": "user", "content": f"{prompt_str}"}],
-            )
+        token_list = df_target_token["tokens"].tolist()
 
-            response_str = response["choices"][0]["message"]["content"].strip()
-            print(response_str)
-            print()
+        max_num_once = 20
+        # 将token_list按max_num_once为单位分割成多个子列表
+        token_list_divided = [token_list[i:i + max_num_once] for i in range(0, len(token_list), max_num_once)]
+        args_list = []
+        for response_index in range(len(token_list_divided)):
+            token_list_divided_str = "[" + ",".join([f"({i + response_index * max_num_once}, '{token_list_divided[response_index][i]}')" for i in range(len(token_list_divided[response_index]))]) + "]"
+
+            prompt_str = "{" + f"'full_text': '{full_text}', 'token_list': {token_list_divided_str}" + "}"
+            # response = openai.ChatCompletion.create(
+            #     model="gpt-4-0613",
+            #     messages=[
+            #         # {"role": "system", "content": "你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我三个指标，一是每个分词与文章的关联程度，二是每个分词本身的阅读难度，三是这个分词在前后文中的阅读难度。"},
+            #         {"role": "system", "content": "你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我一个指标：每个分词与文章的关联程度。"},
+            #         {"role": "user", "content": "我会解释一下我将提供的数据及其含义。\n"
+            #                                     "我会向你提供一句话的完整文本与其对应的分词及每个分词序号。如{'full_text': '今天天气很好', 'token_list': [(0, '今天'), (1, '天气'), (2, '很好')]}\n"
+            #                                     "full_text中的'\n'代表换行。\n"
+            #                                     # "你需要给我的返回是一个列表，其中包含8个成分：分词序号，分词，关联程度打分（rele），关联程度打分确定度（rele_cred），分词本身阅读难度打分（diff），分词本身阅读难度打分确定度（diff_cred），分词上下文阅读难度打分（diff_context），分词上下文阅读难度打分确定度（diff_context_cred）。"
+            #                                     "你需要给我的返回是一个列表，其中包含4个成分：分词序号，分词，关联程度打分（rele），关联程度打分确定度（rele_cred）。"
+            #                                     # "关联程度打分、分词本身阅读难度打分、分词上下文阅读难度打分的分数都是从1到5，分数低代表关联度低或难度低，分数高代表关联度高或难度高。确信度打分为0到1，分数低代表不确定，分数高代表确定。\n"
+            #                                     "关联程度打分从1到5，分数低代表关联度低，分数高代表关联度高。确信度打分为0到1，分数低代表不确定，分数高代表确定。\n"
+            #                                     # "关联程度代表一个分词与这篇文章想要传达的核心意思之间的关联有多大；分词本身难度，代表仅看这个分词，它有多难理解，如一些专业名词的难度就很高（5分），而一些助词、标点，难度就很低（1分）；分词上下文难度，指放在上下文中，一个分词是否容易理解，如叠词单看时容易理解，但放在上下文中则会引发与上下文内容相关的额外的思考。"
+            #                                     "关联程度代表一个分词与这篇文章想要传达的核心意思之间的关联有多大。"
+            #                                     "3个关于打分的确定度，可以被理解为不同人是否都会认可你给出的打分，当确定度高时，代表大部分人都会认可你的打分；当确定度低时，代表只有少部分人会认可你的打分。\n"
+            #                                     "注意，打分过程中，不可增加、删除或修改token。你需要返回所有token的打分结果，打分时间可以较长，但绝对不可以只返回部分结果。"},
+            #         {"role": "user", "content": "接下来我们模拟一下输入和返回的结果。本次模拟中打分的结果不具有参考性。\n"},
+            #         {"role": "user", "content": "。{'full_text': '今天天气很好', 'token_list': [[0, '今天'], [1, '天气'], [2, '很好']]}"},
+            #         # {"role": "assistant", "content": "{'return_list': [{'index': 0, 'token': '今天', 'rele': 4, 'rele_cred': 0.8, 'diff': 2, 'diff_cred': 0.9, 'diff_context': '3', 'diff_context_cred': 0.7}], "
+            #                                          # "[{'index': 1, 'token': '天气', 'rele': 5, 'rele_cred': 0.8, 'diff': 2, 'diff_cred': 0.9, 'diff_context': '3', 'diff_context_cred': 0.7}], "
+            #                                          # "[{'index': 2, 'token': '很好', 'rele': 4, 'rele_cred': 0.8, 'diff': 1, 'diff_cred': 0.9, 'diff_context': '2', 'diff_context_cred': 0.7}]}"},
+            #         {"role": "assistant", "content": "{'return_list': [[0, '今天', 4, 0.8], [1, '天气', 5, 0.8], [2, '很好', 5, 0.8]]}"},
+            #         {"role": "user", "content": "你做得很好，接下来请按相同的格式给我返回，但之后的打分需要是正确的打分。\n"},
+            #         {"role": "assistant", "content": "好的，我已经理解你的任务了。你可以给我你需要打分的文本了。\n"},
+            #         {"role": "user", "content": f"{prompt_str}"}],
+            # )
+            #
+            # response_str = response["choices"][0]["message"]["content"].strip()
+            # print(response_str)
+
+
+            # relevance_response_value = send_single_request(token_list_divided[response_index], prompt_str,
+            #                                                "分词与文本的相关性", "对相关性评分的可信度",
+            #                                                "分词与文本的相关性指的是该分词是否与全文的主要含义有明显、强烈的关联。有些分词（如标点、一些助词）并不影响文本的主要含义，完全可以删去，这些分词的相关性就很弱；有些分词则与文本的主要含义密切相关。",
+            #                                                "分词与文本的相关性打分从1分到5分，1分代表该分词与文本的主要内容没有关联，5分代表该分词与文本主要内容关联十分明显。")
+            # novelty_response_value = send_single_request(token_list_divided[response_index], prompt_str,
+            #                                                "分词信息指数", "对信息指数的可信度",
+            #                                                "分词指数指的是在完成前文的阅读后，该分词是否带来了新的、不同的信息。有些分词（如标点、助词等）并没有带来新的信息，有些分词（如时间、地点等）带来了一些补充信息，有些分词（如与文章主要含义相关性极大的分词）则带来了较多的信息。",
+            #                                                "分词与文本的相关性打分从1分到5分，1分代表该分词没有带来额外的信息，5分代表该分词带来了明显不同于之前的信息。")
+
+            # args_list.append([token_list_divided[response_index], prompt_str,
+            #                               "分词信息指数", "对分词信息指数的可信度",
+            #                               "分词指数指的是在完成前文的阅读后，该分词是否带来了新的、不同的信息。有些分词（如标点、助词等）并没有带来新的信息，有些分词（如时间、地点等）带来了一些补充信息，有些分词（如与文章主要含义相关性极大的分词）则带来了较多的信息。",
+            #                               "分词与文本的相关性打分从1分到5分，1分代表该分词没有带来额外的信息，5分代表该分词带来了明显不同于之前的信息。"])
+
+            # args_list.append([token_list_divided[response_index], prompt_str,
+            #                               "阅读停留时间", "对阅读停留时间的可信度",
+            #                               "分词指数指的是你认为用户可能会在词汇上停留的时间，具体地说，它包括了词汇的含义，词汇的熟悉/陌生程度，词汇在文章中起到的作用，词汇是否容易预测等。注意，这段文本阅读时用户可能并没有非常仔细地逐字阅读，只是简单的扫过了关键信息。"
+            #                               "有些分词（如标点、助词等）并没有什么有用的信息，则停留时间会很短；有些分词（如专业词汇等）一般不常见，则会有略长的停留时间；有些分词与文章主要含义相关性极大，则会停留较久。",
+            #                               "阅读停留时间打分从1分到5分，1分代表在该分词上的停留时间很短，5分代表在该分词上的停留时间很长。"])
+
+            args_list.append([token_list_divided[response_index], prompt_str,
+                                          "阅读停留时间", "对阅读停留时间的可信度",
+                                          "阅读停留时间指的是你认为用户可能会在词汇上停留的时间。具体地说，它包括了词汇的含义，词汇的熟悉/陌生程度，词汇在文章中起到的作用，词汇是否容易预测等。"
+                                          "同时，不同类别的文本，用户阅读的停留倾向也是不同的，如对于商品介绍类的文本，用户会更加关注参数、功能、价格等；对于观点输出类的文本，用户会更关注观点内容、论据等；对于推荐类的文本，用户会更关注推荐对象、理由等。"
+                                          "注意，这段文本阅读时用户可能并没有非常仔细地逐字阅读，只是简单的扫过了关键信息。"
+                                          "有些分词（如标点、助词等）并没有什么有用的信息，则停留时间会很短；有些分词（如专业词汇等）一般不常见，则会有略长的停留时间；有些分词与文章主要含义相关性极大，则会停留较久。",
+                                          "阅读停留时间打分从1分到5分，1分代表在该分词上的停留时间很短，5分代表在该分词上的停留时间很长。"])
+
+        with Pool(8) as p:
+            novelty_all_list = p.starmap(send_single_request, args_list)
+
+        novelty_response_value = []
+        for novelty_list in novelty_all_list:
+            novelty_response_value.extend(novelty_list)
+
+        collect_index_and_save(df_text_unit, target_para_index[target_index], novelty_response_value, df_target_token, token_type, "duration_third")
 
 
 '''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''

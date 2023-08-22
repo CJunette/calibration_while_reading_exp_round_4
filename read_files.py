@@ -180,3 +180,17 @@ def read_tokens(token_type="fine"):
 
     return tokens_list
 
+
+def read_text_unit_density():
+    file_path = f"data/text_density/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path)
+
+    text_unit_density_list = []
+    for file_index in range(len(file_list)):
+        file_name = f"{file_path}{file_list[file_index]}/text_unit_density.csv"
+        text_unit_density_df = pd.read_csv(file_name, encoding="utf-8_sig")
+        text_unit_density_list.append(text_unit_density_df)
+
+    return text_unit_density_list
+
+

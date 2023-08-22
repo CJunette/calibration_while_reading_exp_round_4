@@ -135,7 +135,7 @@ def match_manual_weight_and_gaze_density():
             gaze_y = df_reading.iloc[gaze_index]["gaze_y"]
             ax.scatter(gaze_x, gaze_y, s=1, c='green')
 
-    df_manual_weight_all = pd.read_csv(f"data/text/{configs.round}/relevance_gpt_weighted_90-94.csv", encoding="utf-8_sig")
+    df_manual_weight_all = pd.read_csv(f"data/text/{configs.round}/weight/8_20_fine_relevance_gpt_weighted_90-94.csv", encoding="utf-8_sig")
     df_manual_weight_all.drop(columns=["Unnamed: 0"], axis=1, inplace=True)
     manual_weight_index = [90, 91, 92, 93, 94]
 
@@ -261,8 +261,59 @@ def down_sample_reading():
             plt.show()
 
 
+def add_all_reading(weight_file_name):
+    file_candidate_list = [0, 2, 4, 5, 6, 7, 8, 9, 10]
+    para_candidate_list = [90, 91, 92, 93, 94]
 
+    text_unit_density_list = read_files.read_text_unit_density()
+    manual_density_file_path = f"data/text/{configs.round}/weight/{weight_file_name}"
+    df_manual_density = pd.read_csv(manual_density_file_path, encoding="utf-8_sig", index_col=False)
 
+    for para_index in range(len(para_candidate_list)):
+        df_list = []
+        for file_index in range(len(file_candidate_list)):
+            df = text_unit_density_list[file_index]
+            df = df[df["para_id"] == para_candidate_list[para_index]]
+            df_list.append(df)
+
+        df_all = df_list[0].copy(deep=True)
+        new_relative_density_list = [0 for _ in range(df_all.shape[0])]
+        df_all["relative_text_unit_density"] = new_relative_density_list
+
+        for file_index in range(len(file_candidate_list)):
+            df_all["relative_text_unit_density"] += df_list[file_index]["relative_text_unit_density"]
+
+        relative_density_list = df_all["relative_text_unit_density"].tolist()
+
+        for token_index in range(df_all.shape[0]):
+            print("{" + f"'token_index': {token_index}, 'token': {df_all.iloc[token_index]['word']}, 'relative_density': {relative_density_list[token_index]:.6f}" + "}", end=", ")
+
+        relative_density_list = [math.pow(i, 1/1.5) for i in relative_density_list]
+        max_relative_density = max(relative_density_list)
+        manual_density_list = df_manual_density[df_manual_density["para_id"] == para_candidate_list[para_index]]["weight"].tolist()
+        max_manual_weight = max(manual_density_list)
+
+        # visualize
+        fig, ax = plt.subplots()
+        ax.set_aspect('equal')
+        ax.set_xlim(0, 1920)
+        ax.set_ylim(1200, 0)
+        plt.rcParams['font.sans-serif'] = ['SimSun']  # 指定默认字体
+
+        for text_unit_index in range(df_all.shape[0]):
+            text = df_all.iloc[text_unit_index]["word"]
+            center_x = df_all.iloc[text_unit_index]["x"]
+            center_y = df_all.iloc[text_unit_index]["y"]
+            width = configs.text_width
+            height = configs.text_height
+            actual_color = (relative_density_list[text_unit_index] / max_relative_density, 0, 0)
+            manual_color = (0, 0, manual_density_list[text_unit_index] / max_manual_weight)
+            ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=actual_color)
+            rect = patches.Rectangle((center_x - width / 2, center_y - height / 2), width, height, linewidth=0.5, edgecolor='none', facecolor=manual_color)
+            # rect = patches.Rectangle((center_x - width / 2, center_y - height / 2), width, height, linewidth=0.5, edgecolor='#DDDDDD', facecolor='none')
+            ax.add_patch(rect)
+
+        plt.show()
 
 
 
