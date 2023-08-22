@@ -1,5 +1,9 @@
+import json
 import math
 import os
+from multiprocessing import Pool
+import re
+
 import numpy as np
 import openai
 import pandas as pd
@@ -7,6 +11,7 @@ import pandas as pd
 import analyse_calibration_data
 import analyse_reading_data
 import configs
+import read_files
 import talk_with_GPT
 
 
@@ -347,3 +352,155 @@ def ask_gpt_about_article():
     # 之后先将文本给GPT让它给出5段分析，然后把这5段分析给GPT，让它对每个分词进行打分。
     response_str = response["choices"][0]["message"]["content"].strip()
     print(response_str)
+
+
+def ask_gpt_to_subsume_article_single_pool(full_text_dict, finished_list):
+    talk_with_GPT.start_using_IDE()
+    talk_with_GPT.set_openai()
+
+    text = full_text_dict["text"]
+    text_index = int(full_text_dict["text_index"])
+    if text_index in finished_list:
+        return
+    while True:
+        response = openai.ChatCompletion.create(
+            model="gpt-4-0613",
+            messages=[
+                {"role": "system", "content": "你是一个文本分类和归纳总结的专家。"},
+                {"role": "user", "content": "我会给你一段文本，你需要详细阅读这篇文章，并告诉我这段文本的类型是什么（type，新闻、推荐、微博、评论还是其他类型，列表长度不限，尽可能全面），可能是在哪个平台发布的（platform，列表长度不限），这篇文章的7个关键词（keywords）。"
+                                            "你的回答需要以字典的方式返回。接下来我会给你2个案例。\n"
+                                            "文本：\n"
+                                            """“饭圈”产业价值千亿却走向癫狂，谁该负责
+                                            “饭圈”文化愈演愈烈，粉丝与网络水军混杂，因各种立场、观点、利益冲突，而引发各类网上互撕互黑等风波。6月15日，中央网信办宣布开展为期两个月的“饭圈”乱象整治专项行动，聚焦明星榜单、热门话题、粉丝社群、互动评论等环节。突如其来的强监管，显示近年狂飙突进的“粉丝经济”走到了十字路口。
+                                            官方文件直接点名“饭圈”，前所未见。“饭圈”是一个近年走红的网络用语，主要指娱乐明星粉丝（Fans）组成的圈子。不同于过去所谓“追星族”，“饭圈”更多是基于社群网络的半职业化组织，一些娱乐明星的粉丝业已形成职业分工运作模式，包括“粉头”“数据女工”等新型角色，深度参与明星日常活动，为明星造热度，维持形象和商业价值。\n"""
+                                            "你需要返回的内容如下：\n"
+                                            "{'type': ['新闻', '报道'],"
+                                            "'platform': ['新闻类app', '新浪微博'],"
+                                            "'keywords': ['饭圈', '整治', '乱象', '娱乐明星', '产业价值千亿', '圈子', '数据女工']}\n"
+                                            "又如，文本：\n"
+                                            """大家好，我是蔡徐坤。近日网络上出现关于我的诸多话题，很抱歉占用了大量社会资源。两年前我处于单身状态，与C女士有过交往，双方之间的私事已经在2021年妥善解决，彼此没有进一步的纠葛。
+                                            需要在此向大家和媒体澄清的是，我和C女士的交往均属双方自愿，既不存在“女方为未成年”的情况，也不存在所谓的“强制堕胎”，不涉及违法行为。恳请相关自媒体不传谣、不信谣。
+                                            这个教训对我来说是惨痛的，两年的时间里，我也在自责和懊悔中。再次向一直支持信任我的歌迷们道歉，向一直关注我发展与成长的媒体朋友们道歉。今后，我会严格约束自己的言行，接受大众和社会监督。也请大家尊重和保护当事人特别是C女士的个人隐私。\n"""
+                                            "你需要返回的内容如下：\n"
+                                            "{'type': ['微博', '绯闻声明', '明星八卦'],"
+                                            "'platform': ['新浪微博', '官方公众号'],"
+                                            "'keywords': ['蔡徐坤', '社会资源', '媒体', '澄清', 'C女士', '强制堕胎', '两年前']}\n"
+
+                 },
+                {"role": "assistant", "content": "好的，我理解了你的要求，接下来请给我需要分析的具体文本。"},
+                {"role": "user", "content": f"{text}"}
+            ])
+
+        response_str = response["choices"][0]["message"]["content"].strip()
+        print(response_str)
+
+        try:
+            # 找出response_str中被{}包围的内容。
+            filtered_response_str = re.findall(r"\{.*?}", response_str)[0]
+            response_value = json.loads(filtered_response_str.replace("\'", "\""))
+            bool_check = False
+            key_list = ["type", "platform", "keywords"]
+            for key_index in range(len(key_list)):
+                if key_list[key_index] not in response_value.keys():
+                    print("key not in response_value", filtered_response_str)
+                    bool_check = True
+                    raise Exception
+            if not bool_check:
+                save_path = f"data/text/{configs.round}/description/{text_index}.json"
+                with open(save_path, "w", encoding="utf-8_sig") as f:
+                    json.dump(response_value, f, ensure_ascii=False, indent=4)
+                return
+        except Exception as e:
+            print("ERROR: ", e, response_str)
+            continue
+
+
+def ask_gpt_to_subsume_article():
+    finished_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                     10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+                     20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+                     30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+                     40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+                     50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
+                     60, 61, 63, 64, 65, 66, 67, 68, 69,
+                     70, 71, 72, 77, 78, 79,
+                     80, 81, 82, 83,
+                     98, 99,
+                     100, 101, 102, 103, 105, 106, 107]
+
+    raw_full_text_list = read_files.read_sorted_text()
+    full_text_list = []
+    for file_index in range(len(raw_full_text_list)):
+        full_text_list.append([raw_full_text_list[file_index], finished_list])
+
+    with Pool(3) as p:
+        p.starmap(ask_gpt_to_subsume_article_single_pool, full_text_list)
+
+
+def read_article_category():
+    talk_with_GPT.start_using_IDE()
+    talk_with_GPT.set_openai()
+
+    file_path = f"data/text/{configs.round}/description/"
+    file_list = os.listdir(file_path)
+    category_list = []
+    for file_index in range(len(file_list)):
+        json_data = json.load(open(f'{file_path}{file_index}.json', 'r', encoding='utf-8_sig'))
+        category_list.append(json_data)
+    raw_type_list = [category_list[i]["type"] for i in range(len(category_list))]
+
+    type_list = []
+    for i in raw_type_list:
+        type_list.extend(i)
+    type_set = set(type_list)
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4-0613",
+        messages=[
+            {"role": "system", "content": "你是一个对文本进行分类的专家"},
+            {"role": "user", "content": "我会给你一些词汇，你需要根据这些词汇的语义，将其分为若干个类别。你需要返回这些类别，并告诉我那些词汇属于这些类别。"
+                                        "词汇如下：\n"
+                                        f"{', '.join(type_set)}"},
+        ])
+    response_str = response["choices"][0]["message"]["content"].strip()
+    print(response_str)
+
+
+def compute_edge_point_distance():
+    def compute_distance(point, std_point_list):
+        distance = 0
+        for std_point in std_point_list:
+            distance += math.sqrt((point[0] - std_point[0]) ** 2 + (point[1] - std_point[1]) ** 2)
+        return distance
+
+    calibration_points = np.array(analyse_calibration_data.create_standard_calibration_points()).reshape(-1, 2).tolist()
+
+    calibration_points.sort(key=lambda x: x[0])
+    left = calibration_points[0][0]
+    right = calibration_points[-1][0]
+    calibration_points.sort(key=lambda x: x[1])
+    up = calibration_points[0][1]
+    down = calibration_points[-1][1]
+
+    horizontal_middle = (left + right) / 2
+    vertical_middle = (up + down) / 2
+    up_left = [left, up]
+    up_middle = [horizontal_middle, up]
+    up_right = [right, up]
+    middle_left = [left, vertical_middle]
+    middle_middle = [horizontal_middle, vertical_middle]
+    middle_right = [left, vertical_middle]
+    down_left = [left, down]
+    down_middle = [horizontal_middle, down]
+    down_right = [right, down]
+
+    points = [up_left, up_middle, up_right, middle_left, middle_middle, middle_right, down_left, down_middle, down_right]
+    points_names = ['up_left', 'up_middle', 'up_right', 'middle_left', 'middle_middle', 'middle_right', 'down_left', 'down_middle', 'down_right']
+    distance_list = []
+    for point_index in range(len(points)):
+        distance = compute_distance(points[point_index], calibration_points)
+        distance_list.append(distance / 360)
+
+    for i in range(len(points)):
+        print(points_names[i], distance_list[i])
+

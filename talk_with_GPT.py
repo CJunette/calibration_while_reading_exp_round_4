@@ -19,6 +19,8 @@ def start_using_IDE():
     :return:
     """
     openai.proxy = 'http://127.0.0.1:10809'
+    # openai.proxy = 'http://127.0.0.1:8838'
+    # openai.proxy = 'http://127.0.0.1:7899'
 
 
 def set_openai():

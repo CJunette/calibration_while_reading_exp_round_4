@@ -34,6 +34,9 @@ if __name__ == '__main__':
     # temporary_functions.combine_temp_csv("8_21_fine_duration_fourth_from_gpt") # 将text/round_1/weight/temp文件夹中的csv文件合并成一个文件。
     # temporary_functions.ask_gpt_about_density() # 直接把density结果交给GPT，让GPT给出什么prompt是合适的。
     # temporary_functions.ask_gpt_about_article() # 直接把文本文字交给GPT，让GPT对这个文本进行类别分析，并给出哪些内容是最关键的。
+    # temporary_functions.ask_gpt_to_subsume_article() # 让gpt把文本进行分析，同时给出5个关键词。
+    temporary_functions.read_article_category() # 将刚才的分类结果导入，并用gpt对这些文本类型进行分类。
+    # temporary_functions.compute_edge_point_distance() # 计算对于std points，边界上的点到每个std point的距离。
 
     # analyse_reading_data.render_point_density_hist()
     # analyse_reading_data.match_manual_weight_and_gaze_density()
@@ -47,4 +50,4 @@ if __name__ == '__main__':
     # talk_with_GPT.save_fine_tune_data()
     # talk_with_GPT.test_gpt_fine_tune_prediction()
 
-    talk_with_GPT.get_gpt_prediction()
+    # talk_with_GPT.get_gpt_prediction()
