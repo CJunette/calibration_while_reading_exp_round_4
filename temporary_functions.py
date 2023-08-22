@@ -275,25 +275,6 @@ def get_tokens_of_certain_para(token_type, para_list):
         print(token_list)
 
 
-def combine_temp_csv(file_prefix):
-    file_path = f"data/text/{configs.round}/weight/temp/"
-    file_list = os.listdir(file_path)
-
-    df_list = []
-    index_list = []
-    for file_index in range(len(file_list)):
-        if file_list[file_index].startswith(file_prefix):
-            index_str = file_list[file_index].replace(file_prefix, "").replace(".csv", "").replace("_", "")
-            index_list.append(index_str)
-            file_name = file_path + file_list[file_index]
-            df = pd.read_csv(file_name, encoding="utf-8_sig", index_col=False)
-            df_list.append(df)
-
-    index_list.sort()
-    df_new = pd.concat(df_list)
-    df_new.to_csv(f"data/text/{configs.round}/weight/{file_prefix}_{index_list[0]}-{index_list[-1]}.csv", encoding="utf-8_sig", index=False)
-
-
 def ask_gpt_about_density():
     talk_with_GPT.set_openai()
     talk_with_GPT.start_using_IDE()
