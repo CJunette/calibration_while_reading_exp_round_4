@@ -164,7 +164,7 @@ def prepare_text_for_gpt(df_list, bool_training=False):
     return str_list
 
 
-def send_single_request(tokens, prompt_str, index_str, index_credibility_str, index_explain_str, index_quote_explain_str):
+def send_single_rate_request(tokens, prompt_str, index_str, index_credibility_str, index_explain_str, index_quote_explain_str):
     start_using_IDE()
     set_openai()
 
@@ -233,6 +233,28 @@ def collect_index_and_save(df_text_unit, para_id, response_value, df_target_toke
     # save_path = f"data/text/{configs.round}/weight/temp/8_21_{token_type}_relevance_from_gpt_{target_para_index[target_index]}.csv"
     save_path = f"data/text/{configs.round}/weight/temp/8_21_{token_type}_{index_str}_from_gpt_{para_id}.csv"
     new_df.to_csv(save_path, encoding='utf-8_sig', index=False)
+
+
+def send_article_analyse_request(full_text):
+    start_using_IDE()
+    set_openai()
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4-0613",
+        messages=[
+            {"role": "system", "content": f"你是一个分析文本阅读行为的专家。你需要找出用户在快速阅读时，最可能关注的那些能够“吸引眼球”的词语。文本中的'\\n'代表换行，你可以忽视。"},
+            {"role": "user", "content": "我会给你一系列文本，你需要告诉我这段文本的类型是什么（新闻、推荐、微博、评论还是其他类型），可能是在哪个平台发布的。"
+                                        "以及对于这个平台的用户而言，这些类型的文本应该着重关注哪些内容（what_to_focus，用自然语言描述）；这篇文章中主要关注的文字（分词）是哪些（focus_words）；这类文本不该关注的内容是哪些（what_to_ignore，用自然语言描述）；这篇文章中没有关注的文字（分词）是哪些（ignored_words）。\n"
+                                        "你需要用字典返回这五个内容，如"
+                                        "{'type': '这段文本可以被归类为一种“评论/社交媒体评论”类型。这是一篇关于青旅拒绝35岁以上顾客的政策的讨论，显然是发生在一个类似知乎的在线问答平台。', "
+                                        "'what_to_focus': '讨论或评论的主题，评论者的态度或立场，关键论点，逻辑推理，以及可能引发进一步讨论或争议的点。', "
+                                        "'what_to_ignore': '过于冗长的背景说明，一些无关的插入语或过度的个人情绪。'"
+                                        "'focus_words': '在这段文本中，主要的关键词或者说是分词可能包括“北京”（地点）、“青旅”（主题/对象），“35岁以上顾客”（讨论的焦点），“生活习惯不同，不好管理”（拒绝的原因），“不能认定违规”（法律意见），以及“歧视”、“收入低”、“素质差性格有问题”、“因果关系”（讨论或争辩的关键点）。'"
+                                        "'ignored_words: '“知乎”，以及一个具体的引用（很多支持歧视的回答依据基本是“一个人如果到35岁还住青旅，说明这个人。。。（收入低素质差性格有问题等等）”）。这个引用合并在了我关注的文字中，因为我会更关注该引用中的主要观点，而不是引用本身。'}\n"
+                                        "文本如下：\n"
+                                        f"{full_text}"
+                                        }]
+    )
 
 
 def _save_gpt_prediction(token_type):
@@ -336,7 +358,7 @@ def _save_gpt_prediction(token_type):
                                           "阅读停留时间打分从1分到5分，1分代表在该分词上的停留时间很短，5分代表在该分词上的停留时间很长。"])
 
         with Pool(8) as p:
-            novelty_all_list = p.starmap(send_single_request, args_list)
+            novelty_all_list = p.starmap(send_single_rate_request, args_list)
 
         novelty_response_value = []
         for novelty_list in novelty_all_list:

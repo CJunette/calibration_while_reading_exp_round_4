@@ -262,8 +262,8 @@ def down_sample_reading():
 
 
 def add_all_reading(weight_file_name):
-    file_candidate_list = [0, 2, 4, 5, 6, 7, 8, 9, 10]
-    para_candidate_list = [90, 91, 92, 93, 94]
+    file_candidate_list = [1, 2, 4, 5, 6, 7, 8, 9, 10]
+    para_candidate_list = [72]
 
     text_unit_density_list = read_files.read_text_unit_density()
     manual_density_file_path = f"data/text/{configs.round}/weight/{weight_file_name}"
@@ -290,8 +290,8 @@ def add_all_reading(weight_file_name):
 
         relative_density_list = [math.pow(i, 1/1.5) for i in relative_density_list]
         max_relative_density = max(relative_density_list)
-        manual_density_list = df_manual_density[df_manual_density["para_id"] == para_candidate_list[para_index]]["weight"].tolist()
-        max_manual_weight = max(manual_density_list)
+        # manual_density_list = df_manual_density[df_manual_density["para_id"] == para_candidate_list[para_index]]["weight"].tolist()
+        # max_manual_weight = max(manual_density_list)
 
         # visualize
         fig, ax = plt.subplots()
@@ -307,10 +307,10 @@ def add_all_reading(weight_file_name):
             width = configs.text_width
             height = configs.text_height
             actual_color = (relative_density_list[text_unit_index] / max_relative_density, 0, 0)
-            manual_color = (0, 0, manual_density_list[text_unit_index] / max_manual_weight)
+            # manual_color = (0, 0, manual_density_list[text_unit_index] / max_manual_weight)
             ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=actual_color)
-            rect = patches.Rectangle((center_x - width / 2, center_y - height / 2), width, height, linewidth=0.5, edgecolor='none', facecolor=manual_color)
-            # rect = patches.Rectangle((center_x - width / 2, center_y - height / 2), width, height, linewidth=0.5, edgecolor='#DDDDDD', facecolor='none')
+            # rect = patches.Rectangle((center_x - width / 2, center_y - height / 2), width, height, linewidth=0.5, edgecolor='none', facecolor=manual_color)
+            rect = patches.Rectangle((center_x - width / 2, center_y - height / 2), width, height, linewidth=0.5, edgecolor='#DDDDDD', facecolor='none')
             ax.add_patch(rect)
 
         plt.show()
