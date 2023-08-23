@@ -288,7 +288,7 @@ def add_all_reading(weight_file_name):
         for token_index in range(df_all.shape[0]):
             print("{" + f"'token_index': {token_index}, 'token': {df_all.iloc[token_index]['word']}, 'relative_density': {relative_density_list[token_index]:.6f}" + "}", end=", ")
 
-        relative_density_list = [math.pow(i, 1/1.5) for i in relative_density_list]
+        relative_density_list = [math.pow(i, 1/1) for i in relative_density_list]
         max_relative_density = max(relative_density_list)
         manual_density_list = df_manual_density[df_manual_density["para_id"] == para_candidate_list[para_index]]["weight"].tolist()
         max_manual_weight = max(manual_density_list)

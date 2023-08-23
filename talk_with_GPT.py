@@ -177,23 +177,35 @@ def send_single_rate_request(tokens, full_text, reading_analyse_result, prompt_s
             messages=[
                 {"role": "system", "content": f"你是一个分析文本与分词的专家。我会为你提供一段文本与它对应分词，你需要告诉我一个指标：{index_str}。"
                                               f"在此过程中，我会引导你的思考，在中间过程中，将之前我们交流的结果的一些结果用'<>'标出，你最后的推理可以利用这些中间结果。"},
-                {"role": "user", "content": "你需要打分的文本如下（文本中的\\n代表换行，你可以忽略）：\n"
-                                            f"{full_text}\n"
-                                            "接下来我会引导你的思考。\n"
+                {"role": "user", "content": "首先，我会告诉你需要分析哪些方面的信息及如何分析这些信息；然后我会给你一个示例，你可以根据示例加深对分析方法的理解；最后我会给你一段新的文本，你需要返回相同的“中间结果”。"},
+                {"role": "assistant", "content": "好的，我了解我的任务了，请开始说明需要分析的文本信息及分析方法。"},
+                {"role": "user", "content": "接下来我会引导你的思考。\n"
                                             "你应该先对这段文本进行类别的划分（如新闻、声明、推荐、情绪表达等），给出一个分类结果<type>。"
-                                            "然后你需要分析这个文本所在的平台（如微博、知乎、澎湃新闻等），给出一个平台估计<platform>。"
-                                            f"根据<type>和<platform>，你需要形成一些关于文本类型的先验知识<prior_knowledge_by_type>和平台用户的先验知识<prior_knowledge_by_platform>，这两个先验知识都是影响阅读关注度的因素。"
-                                            "文本类型的先验知识决定了用户对文本中的哪些内容更为关注。"
-                                            "举例来说，对于新闻，用户会更关注新闻发生的时间、地点、人物、影响等，对于案件相关的细节会较为关注；而忽略一些不重要的场景描写、背景介绍或情绪性的表达。"
-                                            "对于推荐评价类的文本，用户会更关注与被推荐对象有关的信息（如推荐的餐厅的地点、菜品、价格、环境等），及用户赞扬或批评的信息（如价格高、环境好、服务周到、菜品不新鲜等）；而忽视用户个人表达较多的文字（如“吃完之后觉得心里暖暖的”）。"
-                                            "对于公告、微博这类的文本，用户会更关注文本中涉及的不同对象、对象间的关系、事件发生的缘由、对事件的解释等内容，而忽视一些较为客套的语言（如“接受大众和社会的监督”等）。"
-                                            "平台用户的先验知识同样决定了用户对阅读的关注偏好。"
-                                            "如微博用户会倾向于关注文本中具有对立性、矛盾性的字眼，而新闻类app的用户则会更中性地分析这类文字。又如小红书用户可能会更关注评价中呈现出的效果，而淘宝用户则会更关注评价中反应的价格。"
-                                            "接下来你需要提取或概括这个文本的7个关键词<keywords>。这7个关键词将显著影响你后续对文本分词的关注度。"
-                                            "关键词应该覆盖该文本的主要信息，如对于评论餐馆的文本，应该覆盖餐馆的名称、类别、食物、环境、用户的态度等；对于明星八卦类的新闻文本，应该包含涉事明星、具体内容、时间、地点等。"},
-                {"role": "assistant", "content": f"好的，我理解你对这篇文章的描述了。我认为该文章的分类结果<type>为{reading_analyse_result['type']}；文章所在平台<platform>为{reading_analyse_result['platform']}；"
-                                                 f"根据<type>得到的文本类型先验知识<prior_knowledge_by_type>为{reading_analyse_result['prior_knowledge_by_type']}；根据<platform>得到的平台用户先验知识<prior_knowledge_by_type>为{reading_analyse_result['prior_knowledge_by_platform']}；"
-                                                 f"关键词<keywords>为{reading_analyse_result['keywords']}。"
+                                            "然后你需要分析这个文本的阅读受众（如微博用户、明星粉丝、互联网从业者等），判断谁最有可能阅读这段文本<reader>。"
+                                            "你还需要分析这个文本涉及的题材（如明星八卦、时政新闻等），判断这段文本的题材<topic>。"
+                                            "根据<type><reader><topic>，你需要形成一些关于类型的先验知识<prior_knowledge_by_type>、用户的先验知识<prior_knowledge_by_reader>和关于话题的先验知识<prior_knowledge_by_topic>。"
+                                            "类型的先验知识决定了用户阅读文本的目的，即阅读这个文本的人最想获取的信息是什么。"
+                                            "举例来说，对于新闻，用户的目的是了解发生事件的全貌，因此会对事件的时间、地点、人物、影响、事件相关的细节更为关注，而忽略一些不重要的场景描写、背景介绍或情绪性的表达；"
+                                            "对于产品推荐类的文本，用户的目的是思考是否应该购买这个产品，因此会对产品的名称、性能、特点、价格等更为关注，而忽略一些过于主观、情感化的表达。"
+                                            "话题先验决定了用户阅读文本的侧重点，即阅读这个话题的人最感兴趣的内容是什么。"
+                                            "举例来说，对于化妆品推荐文本，用户会更关注化妆品品牌、效果、适用范围、成分等；对于餐厅推荐文本，用户会更关注菜品、价格、就餐环境等。"
+                                            "用户的先验知识同样决定了用户对阅读的关注偏好，即这类用户最关注的是什么。"
+                                            "如微博用户会倾向于关注文本中具有对立性、矛盾性的字眼，而新闻类app的用户则会更中性地分析这类文字；又如小红书用户可能会更关注评价中呈现出的效果，而淘宝用户则会更关注评价中反应的价格。"
+                                            "接下来你需要提取或概括这个文本的3个关键信息<key_info>。"
+                                            "关键词应该覆盖该文本的主要信息，如对于评论餐馆的文本，应该覆盖餐馆的名称、类别、食物、环境、用户的态度等；对于明星八卦类的新闻文本，应该包含涉事明星、具体内容、时间、地点等。\n"
+                                            "我会先用一段文本做举例，告诉你如何进行打分。"
+                                            "参考文本如下（文本中的\\n代表换行，你可以忽略）："
+                                            "“饭圈”产业价值千亿却走向癫狂，谁该负责\n“饭圈”文化愈演愈烈，粉丝与网络水军混杂，因各种立场、观点、利益冲突，而引发各类网上互撕互黑等风波。6月15日，中央网信办宣布开展为期两个月的“饭圈”乱象整治专项行动，聚焦明星榜单、热门话题、粉丝社群、互动评论等环节。突如其来的强监管，显示近年狂飙突进的“粉丝经济”走到了十字路口。\n官方文件直接点名“饭圈”，前所未见。“饭圈”是一个近年走红的网络用语，主要指娱乐明星粉丝（Fans）组成的圈子。不同于过去所谓“追星族”，“饭圈”更多是基于社群网络的半职业化组织，一些娱乐明星的粉丝业已形成职业分工运作模式，包括“粉头”“数据女工”等新型角色，深度参与明星日常活动，为明星造热度，维持形象和商业价值。\n"
+                                            "{'type': '新闻', 'reader': '微博或新闻类app', 'topic': '饭圈乱象及其整治', "
+                                            "'prior_knowledge_by_type': '在阅读新闻时，用户的目的可能包括：了解饭圈混乱现状的具体表现，确定整治行动涉及范围，了解整治行动能对饭圈和粉丝经济产生什么影响。', "
+                                            "'prior_knowledge_by_reader': '该文本可能发送在微博或其他新闻类app，考虑到此新闻的话题涉及粉丝经济，阅读文本的用户可能是对饭圈有所了解的人。他们会关注目前饭圈的具体构成“粉头”、“数据女工”，“乱象”的具体表现（如“互撕互黑”）。'"
+                                            "'prior_knowledge_by_topic': '该文本讨论的话题是饭圈、粉丝经济及其整治，需要关注的重点是具体政治的措施，该整治是否影响到特定明星或特定群体。'"
+                                            "'key_info'： ['饭圈乱象', '网信办整治粉丝经济', '娱乐明星粉丝群体']}\n"},
+                {"role": "assistant", "content": f"好的，我理解你对这篇文章的描述了。我认为该文章的分类结果<type>为{reading_analyse_result['type']}；文章的潜在读者<reader>为{reading_analyse_result['reader']}；"
+                                                 f"根据<type>得到的文本类型先验知识<prior_knowledge_by_type>为{reading_analyse_result['prior_knowledge_by_type']}；"
+                                                 f"根据<reader>得到的平台用户先验知识<prior_knowledge_by_reader>为{reading_analyse_result['prior_knowledge_by_reader']}；"
+                                                 f"根据<topic>得到的平台用户先验知识<prior_knowledge_by_topic>为{reading_analyse_result['prior_knowledge_by_topic']}"
+                                                 f"关键信息<key_info>为{reading_analyse_result['key_info']}。"
                                                  f"接下来请告诉我后续的任务细节。"},
                 {"role": "user", "content": f"你需要结合文本与以上给出的中间结果，思考阅读时对每个分词的{index_str}。"
                                             f"{index_explain_str}\n"
@@ -215,7 +227,7 @@ def send_single_rate_request(tokens, full_text, reading_analyse_result, prompt_s
         print(response_str)
 
         try:
-            response_value = json.loads(response_str.replace("\'", "\""))["return_list"]
+            response_value = json.loads(response_str.replace("\'", "\"").replace("\n", ""))["return_list"]
             bool_check = False
             for token_index in range(len(tokens)):
                 if tokens[token_index] != response_value[token_index][1]:
@@ -266,27 +278,45 @@ def send_article_analyse_request(full_text, para_index):
             messages=[
                 {"role": "system",
                  "content": "你是一个归纳、分析、分类文本的专家。在此过程中，我会引导你的思考，并将中间过程中的一些结果用'<>'标出，你最后需要以字典的方式输出这些中间结果。"},
-                {"role": "user", "content": "你需要打分的文本如下（文本中的\\n代表换行，你可以忽略）：\n"
-                                            f"{full_text}\n"
-                                            "接下来我会引导你的思考。\n"
+                {"role": "user", "content": "首先，我会告诉你需要分析哪些方面的信息及如何分析这些信息；然后我会给你一个示例，你可以根据示例加深对分析方法的理解；最后我会给你一段新的文本，你需要返回相同的“中间结果”。"},
+                {"role": "assistant", "content": "好的，我了解我的任务了，请开始说明需要分析的文本信息及分析方法。"},
+                {"role": "user", "content": "接下来我会引导你的思考。\n"
                                             "你应该先对这段文本进行类别的划分（如新闻、声明、推荐、情绪表达等），给出一个分类结果<type>。"
-                                            "然后你需要分析这个文本所在的平台（如微博、知乎、澎湃新闻等），给出一个平台估计<platform>。"
-                                            "根据<type>和<platform>，你需要形成一些关于文本类型的先验知识<prior_knowledge_by_type>和平台用户的先验知识<prior_knowledge_by_platform>，这两个先验知识都是影响阅读关注度的因素。"
-                                            "文本类型的先验知识决定了用户对文本中的哪些内容更为关注。"
-                                            "举例来说，对于新闻，用户会更关注新闻发生的时间、地点、人物、影响等，对于案件相关的细节会较为关注；而忽略一些不重要的场景描写、背景介绍或情绪性的表达。"
-                                            "对于推荐评价类的文本，用户会更关注与被推荐对象有关的信息（如推荐的餐厅的地点、菜品、价格、环境等），及用户赞扬或批评的信息（如价格高、环境好、服务周到、菜品不新鲜等）；而忽视用户个人表达较多的文字（如“吃完之后觉得心里暖暖的”）。"
-                                            "对于公告、微博这类的文本，用户会更关注文本中涉及的不同对象、对象间的关系、事件发生的缘由、对事件的解释等内容，而忽视一些较为客套的语言（如“接受大众和社会的监督”等）。"
-                                            "平台用户的先验知识同样决定了用户对阅读的关注偏好。"
-                                            "如微博用户会倾向于关注文本中具有对立性、矛盾性的字眼，而新闻类app的用户则会更中性地分析这类文字。又如小红书用户可能会更关注评价中呈现出的效果，而淘宝用户则会更关注评价中反应的价格。"
-                                            "接下来你需要提取或概括这个文本的7个关键词<keywords>。这7个关键词将显著影响你后续对文本分词的关注度。"
-                                            "关键词应该覆盖该文本的主要信息，如对于评论餐馆的文本，应该覆盖餐馆的名称、类别、食物、环境、用户的态度等；对于明星八卦类的新闻文本，应该包含涉事明星、具体内容、时间、地点等。"},
-                {"role": "assistant", "content": "好的，我已经完整地阅读了文本，并形成了对应的中间结果。接下来请告诉我输出的规范。"},
-                {"role": "user", "content": f"你必须以字典的方式将这些中间结果输出给我。示例如下（具体内容不具参考性）：\n"
-                                            f"假设你的<type>是'情绪表达'，<platform>是'知乎或其他社交平台'，<prior_knowledge_by_type>是'用户可能会更关注文中的情绪表达、观点阐述、具体例子和对比。'，<prior_knowledge_by_platform>是'微博或知乎用户可能会关注其中的争议性观点，或是与社会热点相关的言论'，<keywords>是，“大水”、“山洪”、“贫困县”、“怎么办”、“救援”、“被迫离家”、“财产损失”。"
-                                            f"你最终的输出结果应该是"
-                                            "{'type': '情绪表达', 'platform': '知乎或其他社交平台', 'prior_knowledge_by_type': '用户可能会更关注文中的情绪表达、观点阐述、具体例子和对比。', 'prior_knowledge_by_platform': '微博或知乎用户可能会关注其中的争议性观点，或是与社会热点相关的言论', 'keywords': ['大水', '山洪', '贫困县', '怎么办', '救援', '被迫离家', '财产损失']}\n"},
-                {"role": "assistant", "content": "好的，我已经理解了你的格式要求，接下来可以给我需要打分的文字了。"}
-
+                                            "然后你需要分析这个文本的阅读受众（如微博用户、明星粉丝、互联网从业者等），判断谁最有可能阅读这段文本<reader>。"
+                                            "你还需要分析这个文本涉及的题材（如明星八卦、时政新闻等），判断这段文本的题材<topic>。"
+                                            "根据<type><reader><topic>，你需要形成一些关于类型的先验知识<prior_knowledge_by_type>、用户的先验知识<prior_knowledge_by_reader>和关于话题的先验知识<prior_knowledge_by_topic>。"
+                                            "类型的先验知识决定了用户阅读文本的目的，即阅读这个文本的人最想获取的信息是什么。"
+                                            "举例来说，对于新闻，用户的目的是了解发生事件的全貌，因此会对事件的时间、地点、人物、影响、事件相关的细节更为关注，而忽略一些不重要的场景描写、背景介绍或情绪性的表达；"
+                                            "对于产品推荐类的文本，用户的目的是思考是否应该购买这个产品，因此会对产品的名称、性能、特点、价格等更为关注，而忽略一些过于主观、情感化的表达。"
+                                            "话题先验决定了用户阅读文本的侧重点，即阅读这个话题的人最感兴趣的内容是什么。"
+                                            "举例来说，对于化妆品推荐文本，用户会更关注化妆品品牌、效果、适用范围、成分等；对于餐厅推荐文本，用户会更关注菜品、价格、就餐环境等。"
+                                            "用户的先验知识同样决定了用户对阅读的关注偏好，即这类用户最关注的是什么。"
+                                            "如微博用户会倾向于关注文本中具有对立性、矛盾性的字眼，而新闻类app的用户则会更中性地分析这类文字；又如小红书用户可能会更关注评价中呈现出的效果，而淘宝用户则会更关注评价中反应的价格。"
+                                            "接下来你需要提取或概括这个文本的3个关键信息<key_info>。"
+                                            "关键词应该覆盖该文本的主要信息，如对于评论餐馆的文本，应该覆盖餐馆的名称、类别、食物、环境、用户的态度等；对于明星八卦类的新闻文本，应该包含涉事明星、具体内容、时间、地点等。\n"
+                                            "我会先用一段文本做举例，告诉你如何进行打分。"
+                                            "参考文本如下（文本中的\\n代表换行，你可以忽略）："
+                                            "“饭圈”产业价值千亿却走向癫狂，谁该负责\n“饭圈”文化愈演愈烈，粉丝与网络水军混杂，因各种立场、观点、利益冲突，而引发各类网上互撕互黑等风波。6月15日，中央网信办宣布开展为期两个月的“饭圈”乱象整治专项行动，聚焦明星榜单、热门话题、粉丝社群、互动评论等环节。突如其来的强监管，显示近年狂飙突进的“粉丝经济”走到了十字路口。\n官方文件直接点名“饭圈”，前所未见。“饭圈”是一个近年走红的网络用语，主要指娱乐明星粉丝（Fans）组成的圈子。不同于过去所谓“追星族”，“饭圈”更多是基于社群网络的半职业化组织，一些娱乐明星的粉丝业已形成职业分工运作模式，包括“粉头”“数据女工”等新型角色，深度参与明星日常活动，为明星造热度，维持形象和商业价值。\n"
+                                            "{'type': '新闻', 'reader': '微博或新闻类app', 'topic': '饭圈乱象及其整治', "
+                                            "'prior_knowledge_by_type': '在阅读新闻时，用户的目的可能包括：了解饭圈混乱现状的具体表现，确定整治行动涉及范围，了解整治行动能对饭圈和粉丝经济产生什么影响。', "
+                                            "'prior_knowledge_by_reader': '该文本可能发送在微博或其他新闻类app，考虑到此新闻的话题涉及粉丝经济，阅读文本的用户可能是对饭圈有所了解的人。他们会关注目前饭圈的具体构成“粉头”、“数据女工”，“乱象”的具体表现（如“互撕互黑”）。'"
+                                            "'prior_knowledge_by_topic': '该文本讨论的话题是饭圈、粉丝经济及其整治，需要关注的重点是具体政治的措施，该整治是否影响到特定明星或特定群体。'"
+                                            "'key_info'： ['饭圈乱象', '网信办整治粉丝经济', '娱乐明星粉丝群体']}\n"},
+                {"role": "assistant", "content": "好的，理解了这种分析方法。我需要以字典的方式输出结果吗？"},
+                {"role": "user", "content": "是的，你需要输出的结果格式如下（具体内容不具参考性）：\n"
+                                            "假设你的<type>是'情绪表达'，<reader>是'新闻app用户'，<topic>是'山洪爆发贫困县撤离'，"
+                                            "<prior_knowledge_by_type>是'用户可能会更关注文中的情绪表达、观点阐述、具体例子和对比。'，"
+                                            "<prior_knowledge_by_reader>是'微博或知乎用户可能会关注其中的争议性观点，或是与社会热点相关的言论'，"
+                                            "<prior_knowledge_by_topic>是'用户会关注具体的受灾状况。'"
+                                            "<keywords>是，“山洪爆发”、“贫困县居民被迫迁移”、“财产损失严重”。\n"
+                                            "你最终的输出结果应该如下：\n"
+                                            "{'type': '情绪表达', 'reader': '新闻app用户', 'topic': '山洪爆发贫困县撤离, '"
+                                            "'prior_knowledge_by_type': '用户可能会更关注文中的情绪表达、观点阐述、具体例子和对比。', "
+                                            "'prior_knowledge_by_reader': '微博或知乎用户可能会关注其中的争议性观点，或是与社会热点相关的言论', "
+                                            "'prior_knowledge_by_topic': '用户会关注具体的受灾状况。', "
+                                            "'key_info': ['山洪爆发', '贫困县居民被迫迁移', '财产损失严重']}\n"},
+                {"role": "user", "content": "你现在要做的是，根据我新给你的文本，重复上面的思考过程，给出对应的中间结果。新文本如下（文本中的\\n代表换行，你可以忽略）：\n"
+                                            f"{full_text}\n"},
             ])
 
         response_str = response["choices"][0]["message"]["content"].strip()
@@ -294,9 +324,9 @@ def send_article_analyse_request(full_text, para_index):
 
         try:
             filtered_response_str = re.findall(r"\{.*?}", response_str)[0]
-            response_value = json.loads(filtered_response_str.replace("\'", "\""))
+            response_value = json.loads(filtered_response_str.replace("\'", "\"").replace("\n", ""))
             bool_check = False
-            key_list = ['type', 'platform', 'prior_knowledge_by_type', 'prior_knowledge_by_platform', 'keywords']
+            key_list = ['type', 'reader', 'topic', 'prior_knowledge_by_type', 'prior_knowledge_by_reader', 'prior_knowledge_by_topic', 'key_info']
             for key in key_list:
                 if key not in response_value.keys():
                     print("ERROR: token not in response_value", response_str)
@@ -317,8 +347,8 @@ def save_middle_result(target_para_index):
     for para_index in target_para_index:
         args_list.append([raw_full_text_list[para_index]["text"], para_index])
 
-    with Pool(8) as p:
-        reading_analyse_result_list = p.starmap(send_article_analyse_request, args_list)
+    with Pool(4) as p:
+        p.starmap(send_article_analyse_request, args_list)
 
 
 def _save_gpt_prediction(target_para_index, save_file_prefix):
@@ -433,7 +463,7 @@ def _save_gpt_prediction(target_para_index, save_file_prefix):
                                           "阅读关注程度", "对阅读关注程度的可信度",
                                           "阅读关注程度代表用户在阅读时会多关注该分词，用户越关注一个分词，阅读时在这个分词上的停留时间越长。"                                                             
                                           "我们应该利用之前给出的中间结果及词汇本身来做出判断。"
-                                          "你需要首先结合文本类型先验、平台用户特征先验，对用户会关注/不关注哪些内容产生先验的预设。"
+                                          "你需要首先结合文本类型先验、用户先验、话题先验，对用户会关注/不关注哪些内容产生先验的预设。"
                                           "其次，关键词代表了对文本核心内容的概括，关键词列举到的内容或与在文本情境下关键词关联紧密的内容都会被重点关注（如，当关键词是粉圈时，“粉丝”、“乱象”、“明星”就是关系最会被关注的内容）；"
                                           "而与关键词差异较大或没有联系的内容则不会被关注（如，当关键词是粉圈时，“前所未见”、“狂飙突进”就是不怎么会被关注的内容。）。"
                                           "最后，每个分词自身的含义，词汇的熟悉/陌生程度，词汇在文章中起到的作用，词汇是否容易预测等也会影响用户的关注程度。",
@@ -444,7 +474,7 @@ def _save_gpt_prediction(target_para_index, save_file_prefix):
                                           "4分代表该分词会被关注，与中间结果的关键词存在较强的相关性，或该文本类型、平台用户会关注的内容；"
                                           "5分代表极为注意该分词，与中间结果的关键词紧密相关，或该文本类型、平台用户会重点关注的内容。"])
 
-        with Pool(4) as p:
+        with Pool(2) as p:
             result_list = p.starmap(send_single_rate_request, args_list)
 
         response_value = []
@@ -896,8 +926,8 @@ def test_gpt_fine_tune_prediction(token_type="fine"):
 
 def get_gpt_prediction(token_type="fine"):
     target_para_index = [90, 91, 92, 93, 94]
-    data_prefix = "8_22"
-    attribute_name_suffix = "attention_third"
+    data_prefix = "8_23"
+    attribute_name_suffix = "attention_fourth"
     save_middle_result(target_para_index) # 仅在保存中间结果时使用。其余时间注释掉。
     _save_gpt_prediction(target_para_index, f"{data_prefix}_{token_type}_{attribute_name_suffix}_from_gpt") # 仅在保存预测结果时使用。其余时间注释掉。
     combine_temp_csv(f"{data_prefix}_{token_type}_{attribute_name_suffix}_from_gpt") # 将text/round_1/weight/temp文件夹中的csv文件（即gpt得到的权重预测）合并成一个文件。
