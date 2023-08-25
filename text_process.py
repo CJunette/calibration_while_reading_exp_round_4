@@ -2,9 +2,12 @@ import json
 import os
 import re
 import time
+from multiprocessing import Pool
 
+import PyQt5.QtCore
 import pandas as pd
 from hanlp_restful import HanLPClient
+from matplotlib import pyplot as plt, patches
 
 import configs
 import read_files
@@ -456,3 +459,303 @@ def add_text_context_to_tokens():
         save_path_prefix = f"data/text/{configs.round}/tokens/"
         fine_tokens_df.to_csv(f"{save_path_prefix}fine_tokens/{fine_tokens_file_name}", encoding="utf-8_sig", index=False)
         coarse_tokens_df.to_csv(f"{save_path_prefix}coarse_tokens/{coarse_tokens_file_name}", encoding="utf-8_sig", index=False)
+
+
+def compute_distance_to_edge_single_pool(para_id, fine_token_list, df_text_mapping, df_text_mapping_para_id, left_right_bound, up_down_bound):
+    print(para_id)
+    df_fine_token = fine_token_list[para_id]
+
+    horizontal_distance_to_edge = [0 for _ in range(df_text_mapping[df_text_mapping["para_id"] == para_id].shape[0])]
+    vertical_distance_to_edge = [0 for _ in range(df_text_mapping[df_text_mapping["para_id"] == para_id].shape[0])]
+    first_row_weight = [0 for _ in range(df_text_mapping[df_text_mapping["para_id"] == para_id].shape[0])]
+
+    df_text_mapping_para_id = df_text_mapping_para_id.reset_index(drop=True)
+
+    # 添加到水平边界的距离，从左向右。
+    pass_index = 0  # 这个pass_index用于在跳过空格、标点时，计算到边缘的距离。
+    for token_index in range(df_fine_token.shape[0]):
+        if df_fine_token.iloc[token_index]["start_dist"] == 0:
+            pass_index = 0
+        row_id = df_fine_token.iloc[token_index]["row"][0]
+        text_unit_components = df_fine_token.iloc[token_index]["text_unit_component"][0]
+        if len(df_fine_token.iloc[token_index]["tokens"].strip()) == 0 or df_fine_token.iloc[token_index]["tokens"] in configs.punctuation_list:
+            # 当前token是空格或标点，跳过，但之后token的起始位置也要顺势后移。
+            pass_index += 1
+            continue
+        if df_fine_token.iloc[token_index]["start_dist"] - pass_index < left_right_bound:
+            for text_unit_index in text_unit_components:
+                # 这里为了能够实现多线程写入稍作修改。
+                condition = (df_text_mapping_para_id["row"] == row_id) & (df_text_mapping_para_id["col"] == text_unit_index)
+                index = df_text_mapping_para_id.index[condition].tolist()[0]
+                horizontal_distance_to_edge[index] = (df_fine_token.iloc[token_index]["start_dist"] - pass_index) * 4 + 1
+        else:
+            pass_index = 0
+
+    # 添加到水平边界的距离，从右向左。
+    pass_index = 0  # 这个pass_index用于在跳过空格、标点时，计算到边缘的距离。
+    for token_index in range(df_fine_token.shape[0] - 1, -1, -1):
+        if df_fine_token.iloc[token_index]["end_dist"] == 0:
+            pass_index = 0
+        row_id = df_fine_token.iloc[token_index]["row"][0]
+        text_unit_components = df_fine_token.iloc[token_index]["text_unit_component"][0]
+        if len(df_fine_token.iloc[token_index]["tokens"].strip()) == 0 or df_fine_token.iloc[token_index]["tokens"] in configs.punctuation_list:
+            # 当前token是空格或标点，跳过，但之后token的起始位置也要顺势后移。
+            pass_index += 1
+            continue
+        if df_fine_token.iloc[token_index]["end_dist"] - pass_index < left_right_bound:
+            for text_unit_index in text_unit_components:
+                condition = (df_text_mapping_para_id["row"] == row_id) & (df_text_mapping_para_id["col"] == text_unit_index)
+                index = df_text_mapping_para_id.index[condition].tolist()[0]
+                horizontal_distance_to_edge[index] = (df_fine_token.iloc[token_index]["end_dist"] - pass_index) * 4 + 1
+
+    # 添加到垂直边界的距离。
+    for text_unit_index in range(df_text_mapping_para_id.shape[0]):
+        row_id = df_text_mapping_para_id.iloc[text_unit_index]["row"]
+        col_id = df_text_mapping_para_id.iloc[text_unit_index]["col"]
+        if len(df_text_mapping_para_id.iloc[text_unit_index]["word"].strip()) == 0:
+            continue
+
+        up_offset = 1
+        while up_offset < up_down_bound + 1:
+            token = df_text_mapping_para_id[(df_text_mapping_para_id["row"] == row_id - up_offset) & (df_text_mapping_para_id["col"] == col_id)]["word"]
+            if token.shape[0] == 0 or len(token.iloc[0].strip()) == 0:
+                break
+            up_offset += 1
+        if up_offset < up_down_bound + 1:
+            condition = (df_text_mapping_para_id["row"] == row_id) & (df_text_mapping_para_id["col"] == col_id)
+            index = df_text_mapping_para_id.index[condition].tolist()[0]
+            vertical_distance_to_edge[index] = (up_offset - 1) * 4 + 1
+
+        down_offset = 1
+        while down_offset < up_down_bound + 1:
+            token = df_text_mapping_para_id[(df_text_mapping_para_id["row"] == row_id + down_offset) & (df_text_mapping_para_id["col"] == col_id)]["word"]
+            if token.shape[0] == 0 or len(token.iloc[0].strip()) == 0:
+                break
+            down_offset += 1
+        if down_offset < up_down_bound + 1:
+            condition = (df_text_mapping_para_id["row"] == row_id) & (df_text_mapping_para_id["col"] == col_id)
+            index = df_text_mapping_para_id.index[condition].tolist()[0]
+            vertical_distance_to_edge[index] = (down_offset - 1) * 4 + 1
+
+    # 添加首行的额外权重。
+    token_index = 0
+    pass_index = 0
+    while token_index < df_fine_token.shape[0]:
+        row_id = df_fine_token.iloc[token_index]["row"][0]
+        if token_index > 0 and df_fine_token.iloc[token_index - 1]["row"][0] != row_id:
+            pass_index = 0
+        text_unit_components = df_fine_token.iloc[token_index]["text_unit_component"][0]
+        start_dist = df_fine_token.iloc[token_index]["start_dist"]
+        if len(df_fine_token.iloc[token_index]["tokens"].strip()) == 0 or df_fine_token.iloc[token_index]["tokens"] in configs.punctuation_list:
+            token_index += 1
+            pass_index += 1
+            continue
+        else:
+            sub_df = df_fine_token[df_fine_token["row"].apply(lambda x: row_id - 1 in x)]
+            if start_dist - pass_index == 0 and df_fine_token[df_fine_token["row"].apply(lambda x: row_id - 1 in x)].shape[0] == 0:
+                probe_index = 0
+                bound = left_right_bound
+                while probe_index in range(bound + 1):
+                    probe_row_id = df_fine_token.iloc[token_index + probe_index]["row"][0]
+                    if probe_row_id != row_id:
+                        break
+                    else:
+                        probe_text_unit_components = df_fine_token.iloc[token_index + probe_index]["text_unit_component"][0]
+                        for text_unit_index in probe_text_unit_components:
+                            condition = (df_text_mapping_para_id["row"] == probe_row_id) & (df_text_mapping_para_id["col"] == text_unit_index)
+                            if df_text_mapping_para_id[condition]["word"].iloc[0] in configs.punctuation_list:
+                                bound += 1
+                                break
+                            index = df_text_mapping_para_id.index[condition].tolist()[0]
+                            first_row_weight[index] = 5
+                        probe_index += 1
+                token_index += probe_index
+            else:
+                token_index += 1
+
+    # fig, ax = plt.subplots()
+    # ax.set_aspect('equal')
+    # ax.set_xlim(0, 1920)
+    # ax.set_ylim(1200, 0)
+    # plt.rcParams['font.sans-serif'] = ['SimSun']  # 指定默认字体
+    # df_for_vis = df_text_mapping[df_text_mapping["para_id"] == para_id]
+    # for text_unit_index in range(df_for_vis.shape[0]):
+    #     text = df_for_vis.iloc[text_unit_index]["word"]
+    #     center_x = df_for_vis.iloc[text_unit_index]["x"]
+    #     center_y = df_for_vis.iloc[text_unit_index]["y"]
+    #     width = configs.text_width
+    #     height = configs.text_height
+    #     color = (df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"] / 5, 0, 0)
+    #     # color = (df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] / 5, 0, 0)
+    #     # color = ((df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] + df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"]) / 10, 0, 0)
+    #     ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=color)
+    # plt.show()
+    return para_id, horizontal_distance_to_edge, vertical_distance_to_edge, first_row_weight
+
+
+def compute_to_edge_weight():
+    '''
+    使用coarse分词来计算每个分词到边界的距离并作为权重。
+    :return:
+    '''
+    text_mapping_file_name = f"data/text/{configs.round}/text_sorted_mapping.csv"
+    df_text_mapping = pd.read_csv(text_mapping_file_name, encoding="utf-8_sig")
+    df_text_mapping.drop("Unnamed: 0", axis=1, inplace=True)
+    # 给df_text_mapping添加两列：horizontal_weight, vertical_weight
+    df_text_mapping["horizontal_edge_weight"] = 0
+    df_text_mapping["vertical_edge_weight"] = 0
+
+    left_right_bound = 2
+    up_down_bound = 2
+
+    coarse_tokens_file_path = f"data/text/{configs.round}/tokens/coarse_tokens/"
+    fine_token_file_index_list, coarse_token_file_index_list, file_num = read_files.read_token_file_names()
+    coarse_token_list = []
+    for file_index in range(len(coarse_token_file_index_list)):
+        coarse_token_file_name = f"{coarse_token_file_index_list[file_index]}.csv"
+        coarse_token_df = pd.read_csv(f"{coarse_tokens_file_path}{coarse_token_file_name}", encoding="utf-8_sig")
+        read_files.json_load_for_df_columns(coarse_token_df, ["text_unit_component", "row"])
+        coarse_token_list.append(coarse_token_df)
+    fine_tokens_file_path = f"data/text/{configs.round}/tokens/fine_tokens/"
+    fine_token_list = []
+    for file_index in range(len(fine_token_file_index_list)):
+        fine_token_file_name = f"{fine_token_file_index_list[file_index]}.csv"
+        fine_token_df = pd.read_csv(f"{fine_tokens_file_path}{fine_token_file_name}", encoding="utf-8_sig")
+        read_files.json_load_for_df_columns(fine_token_df, ["text_unit_component", "row"])
+        fine_token_list.append(fine_token_df)
+
+    df_text_mapping_group_by_para_id = df_text_mapping.groupby("para_id")
+
+    # for debug.
+    # 添加到水平边界的距离，从左向右。
+    # for para_id, df_text_mapping_para_id in df_text_mapping_group_by_para_id:
+    #     # horizontal_distance_to_edge = [0 for _ in range(df_text_mapping[df_text_mapping["para_id"] == para_id].shape[0])]
+    #     # vertical_distance_to_edge = [0 for _ in range(df_text_mapping[df_text_mapping["para_id"] == para_id].shape[0])]
+    #
+    #     df_fine_token = fine_token_list[para_id]
+    #     pass_index = 0 # 这个pass_index用于在跳过空格、标点时，计算到边缘的距离。
+    #     for token_index in range(df_fine_token.shape[0]):
+    #         if df_fine_token.iloc[token_index]["start_dist"] == 0:
+    #             pass_index = 0
+    #         row_id = df_fine_token.iloc[token_index]["row"][0]
+    #         text_unit_components = df_fine_token.iloc[token_index]["text_unit_component"][0]
+    #         if len(df_fine_token.iloc[token_index]["tokens"].strip()) == 0 or df_fine_token.iloc[token_index]["tokens"] in configs.punctuation_list:
+    #             # 当前token是空格或标点，跳过，但之后token的起始位置也要顺势后移。
+    #             pass_index += 1
+    #             continue
+    #         if df_fine_token.iloc[token_index]["start_dist"] - pass_index < left_right_bound:
+    #             for text_unit_index in text_unit_components:
+    #                 condition = (df_text_mapping["para_id"] == para_id) & (df_text_mapping["row"] == row_id) & (df_text_mapping["col"] == text_unit_index)
+    #                 index = df_text_mapping.index[condition].tolist()[0]
+    #                 df_text_mapping.loc[index, "horizontal_edge_weight"] = (df_fine_token.iloc[token_index]["start_dist"] - pass_index) * 4 + 1
+    #         else:
+    #             pass_index = 0
+    #     # 添加到水平边界的距离，从右向左。
+    #     pass_index = 0  # 这个pass_index用于在跳过空格、标点时，计算到边缘的距离。
+    #     for token_index in range(df_fine_token.shape[0] - 1, -1, -1):
+    #         if df_fine_token.iloc[token_index]["end_dist"] == 0:
+    #             pass_index = 0
+    #         row_id = df_fine_token.iloc[token_index]["row"][0]
+    #         text_unit_components = df_fine_token.iloc[token_index]["text_unit_component"][0]
+    #         if len(df_fine_token.iloc[token_index]["tokens"].strip()) == 0 or df_fine_token.iloc[token_index]["tokens"] in configs.punctuation_list:
+    #             # 当前token是空格或标点，跳过，但之后token的起始位置也要顺势后移。
+    #             pass_index += 1
+    #             continue
+    #         if df_fine_token.iloc[token_index]["end_dist"] - pass_index < left_right_bound:
+    #             for text_unit_index in text_unit_components:
+    #                 condition = (df_text_mapping["para_id"] == para_id) & (df_text_mapping["row"] == row_id) & (df_text_mapping["col"] == text_unit_index)
+    #                 index = df_text_mapping.index[condition].tolist()[0]
+    #                 df_text_mapping.loc[index, "horizontal_edge_weight"] = (df_fine_token.iloc[token_index]["end_dist"] - pass_index) * 4 + 1
+    #
+    #     # 添加到垂直边界的距离。
+    #     for text_unit_index in range(df_text_mapping_para_id.shape[0]):
+    #         row_id = df_text_mapping_para_id.iloc[text_unit_index]["row"]
+    #         col_id = df_text_mapping_para_id.iloc[text_unit_index]["col"]
+    #         if len(df_text_mapping_para_id.iloc[text_unit_index]["word"].strip()) == 0:
+    #             continue
+    #
+    #         up_offset = 1
+    #         while up_offset < up_down_bound + 1:
+    #             token = df_text_mapping_para_id[(df_text_mapping_para_id["row"] == row_id - up_offset) & (df_text_mapping_para_id["col"] == col_id)]["word"]
+    #             if token.shape[0] == 0 or len(token.iloc[0].strip()) == 0:
+    #                 break
+    #             up_offset += 1
+    #         if up_offset < up_down_bound + 1:
+    #             condition = (df_text_mapping["para_id"] == para_id) & (df_text_mapping["row"] == row_id) & (df_text_mapping["col"] == col_id)
+    #             index = df_text_mapping.index[condition].tolist()[0]
+    #             df_text_mapping.loc[index, "vertical_edge_weight"] = (up_offset - 1) * 4 + 1
+    #
+    #         down_offset = 1
+    #         while down_offset < up_down_bound + 1:
+    #             token = df_text_mapping_para_id[(df_text_mapping_para_id["row"] == row_id + down_offset) & (df_text_mapping_para_id["col"] == col_id)]["word"]
+    #             if token.shape[0] == 0 or len(token.iloc[0].strip()) == 0:
+    #                 break
+    #             down_offset += 1
+    #         if down_offset < up_down_bound + 1:
+    #             condition = (df_text_mapping["para_id"] == para_id) & (df_text_mapping["row"] == row_id) & (df_text_mapping["col"] == col_id)
+    #             index = df_text_mapping.index[condition].tolist()[0]
+    #             df_text_mapping.loc[index, "vertical_edge_weight"] = (down_offset - 1) * 4 + 1
+    #
+    #     # visualize to check
+    #     # fig, ax = plt.subplots()
+    #     # ax.set_aspect('equal')
+    #     # ax.set_xlim(0, 1920)
+    #     # ax.set_ylim(1200, 0)
+    #     # plt.rcParams['font.sans-serif'] = ['SimSun']  # 指定默认字体
+    #     # df_for_vis = df_text_mapping[df_text_mapping["para_id"] == para_id]
+    #     # for text_unit_index in range(df_for_vis.shape[0]):
+    #     #     text = df_for_vis.iloc[text_unit_index]["word"]
+    #     #     center_x = df_for_vis.iloc[text_unit_index]["x"]
+    #     #     center_y = df_for_vis.iloc[text_unit_index]["y"]
+    #     #     width = configs.text_width
+    #     #     height = configs.text_height
+    #     #     # color = (df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"] / 5, 0, 0)
+    #     #     # color = (df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] / 5, 0, 0)
+    #     #     color = ((df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] + df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"]) / 10, 0, 0)
+    #     #     ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=color)
+    #     #
+    #     # plt.show()
+
+    args_list = []
+    for para_id, df_text_mapping_para_id in df_text_mapping_group_by_para_id:
+        args = (para_id, fine_token_list, df_text_mapping, df_text_mapping_para_id, left_right_bound, up_down_bound)
+        args_list.append(args)
+
+    with Pool(16) as p:
+        results = p.starmap(compute_distance_to_edge_single_pool, args_list)
+
+    for para_index in range(len(results)):
+        para_id, horizontal_distance_to_edge, vertical_distance_to_edge, first_row_weight = results[para_index]
+        df_text_mapping.loc[df_text_mapping["para_id"] == para_id, "horizontal_edge_weight"] = horizontal_distance_to_edge
+        df_text_mapping.loc[df_text_mapping["para_id"] == para_id, "vertical_edge_weight"] = vertical_distance_to_edge
+        df_text_mapping.loc[df_text_mapping["para_id"] == para_id, "first_row_weight"] = first_row_weight
+
+    # visualize to check
+    for para_id, df_text_mapping_para_id in df_text_mapping_group_by_para_id:
+        fig, ax = plt.subplots()
+        ax.set_aspect('equal')
+        ax.set_xlim(0, 1920)
+        ax.set_ylim(1200, 0)
+        plt.rcParams['font.sans-serif'] = ['SimSun']  # 指定默认字体
+        df_for_vis = df_text_mapping[df_text_mapping["para_id"] == para_id]
+        for text_unit_index in range(df_for_vis.shape[0]):
+            text = df_for_vis.iloc[text_unit_index]["word"]
+            center_x = df_for_vis.iloc[text_unit_index]["x"]
+            center_y = df_for_vis.iloc[text_unit_index]["y"]
+            width = configs.text_width
+            height = configs.text_height
+            color = (df_for_vis.iloc[text_unit_index]["first_row_weight"] / 5, 0, 0)
+            # color = (df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"] / 5, 0, 0)
+            # color = (df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] / 5, 0, 0)
+            # color = ((df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] + df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"]) / 10, 0, 0)
+            ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=color)
+
+        # plt.show()
+
+    save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_edge_weight.csv"
+    df_text_mapping.to_csv(save_file_name, encoding="utf-8_sig", index=False)
+
+
+
+
+

@@ -2,8 +2,8 @@
 
 import os
 import numpy as np
+import openai
 import pandas as pd
-
 import analyse_calibration_data
 import analyse_reading_data
 import configs
@@ -11,6 +11,8 @@ import get_reading_density
 import read_files
 import talk_with_GPT
 import temporary_functions
+import test_match_with_density
+import test_pull_gaze_trace
 import text_process
 
 
@@ -37,10 +39,12 @@ if __name__ == '__main__':
     # temporary_functions.read_article_category() # 将刚才的分类结果导入，并用gpt对这些文本类型进行分类。
     # temporary_functions.compute_edge_point_distance() # 计算对于std points，边界上的点到每个std point的距离。
 
+    # text_process.compute_to_edge_weight()
+
     # analyse_reading_data.render_point_density_hist()
     # analyse_reading_data.match_manual_weight_and_gaze_density()
     # analyse_reading_data.down_sample_reading()
-    analyse_reading_data.add_all_reading("8_22_fine_attention_third_from_gpt_90-94.csv")
+    # analyse_reading_data.add_all_reading("8_22_fine_attention_second_from_gpt_90-94.csv")
 
     # analyse_calibration_data.visualize_original_cali_centroids(f"data/back_up_gaze_data/{configs.round}/reformat_data/20230724_101920/calibration.csv")
 
@@ -50,3 +54,6 @@ if __name__ == '__main__':
     # talk_with_GPT.test_gpt_fine_tune_prediction()
 
     # talk_with_GPT.get_gpt_prediction("coarse")
+
+    # test_pull_gaze_trace.pull_test()
+    test_match_with_density.match_with_density()

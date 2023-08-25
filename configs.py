@@ -25,4 +25,13 @@ fine_tune_ver = 0
 
 # 文本分词相关参数。
 temp_token_debug_num = 23
+punctuation_list = ['，', ':', '：', '。', '……', '！', '？', '——', '（', '）', '【', '】', '“', '”', '’', '‘', '：', '；', '《', '》', '、', '—', '～', '·', '「', '」', '『', '』']
 
+# 空间对齐相关。
+empty_text_unit_penalty = -64
+punctuation_text_unit_penalty = -40
+H_rotation_penalty = 100
+H_scale_penalty = 200
+H_shear_penalty = 200
+H_projection_penalty = 200
+H_space_ratio_penalty = 200

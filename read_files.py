@@ -86,7 +86,6 @@ def read_all_modified_reading_files():
         reading_file_list = os.listdir(reading_file_path)
         reading_file_list = [int(i[:-4]) for i in reading_file_list]
         reading_file_list.sort()
-
         df_list_2 = []
         for reading_file_index in range(len(reading_file_list)):
             df = pd.read_csv(f"{reading_file_path}/{reading_file_list[reading_file_index]}.csv", encoding="utf-8_sig")
@@ -106,6 +105,13 @@ def read_all_modified_reading_text_mapping():
         df = pd.read_csv(text_mapping_file_name, encoding="utf-8_sig")
         df_list_1.append(df)
     return df_list_1
+
+
+def read_sorted_reading_text_mapping():
+    file_name = f"data/text/{configs.round}/text_sorted_mapping_with_edge_weight.csv"
+    df = pd.read_csv(file_name, encoding="utf-8_sig")
+
+    return df
 
 
 def read_all_token_data(token_type):
@@ -145,11 +151,10 @@ def change_single_quotation_to_double_quotation(x):
 
 
 def read_reading_data():
-    file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
+    file_path = f"data/original_gaze_data/{configs.round}/{configs.device}/"
     file_list = os.listdir(file_path)
 
     reading_data_list_1 = []
-
     for file_index in range(len(file_list)):
         reading_file_path = f"{file_path}/{file_list[file_index]}/reading/"
         reading_file_list = os.listdir(reading_file_path)
@@ -194,3 +199,13 @@ def read_text_unit_density():
     return text_unit_density_list
 
 
+def read_calibration_data():
+    file_path_prefix = f"data/original_gaze_data/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path_prefix)
+
+    cali_list = []
+    for file_index in range(len(file_list)):
+        calibration_file_name = f"{file_path_prefix}/{file_list[file_index]}/calibration.csv"
+        df_cali = pd.read_csv(calibration_file_name, encoding="utf-8_sig")
+        cali_list.append(df_cali)
+    return cali_list

@@ -2,7 +2,6 @@ import json
 import os.path
 import re
 from multiprocessing import Pool
-
 from matplotlib.patches import Rectangle, Ellipse, Circle
 import numpy as np
 import openai
