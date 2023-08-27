@@ -417,7 +417,7 @@ def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
     gaze_para_id_list = df_gaze_data["matrix_x"].tolist()
 
     # structural_distance_matrix不随位置变化而变化，因此只计算一次。
-    structural_distance_matrix = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
+    structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix) = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
 
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
@@ -468,7 +468,7 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
     gaze_para_id_list = df_gaze_data["matrix_x"].tolist()
 
     # structural_distance_matrix不随位置变化而变化，因此只计算一次。
-    structural_distance_matrix = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
+    structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix) = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
 
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
