@@ -92,3 +92,10 @@ def visualize_original_cali_centroids(file_path):
     plt.ylabel('Centroid Y')
 
     plt.show()
+
+
+def compute_bias_between_cali_centroids_and_std_points(cali_points_1d, std_points_1d, H):
+    transformed_cali_points_1d = cv2.perspectiveTransform(cali_points_1d.reshape(-1, 1, 2), H).reshape(-1, 2)
+    bias = np.mean(np.sqrt(np.sum(np.square(transformed_cali_points_1d - std_points_1d), axis=1)))
+    return bias
+

@@ -524,7 +524,7 @@ def compute_distance_to_edge_single_pool(para_id, fine_token_list, df_text_mappi
         if up_offset < up_down_bound + 1:
             condition = (df_text_mapping_para_id["row"] == row_id) & (df_text_mapping_para_id["col"] == col_id)
             index = df_text_mapping_para_id.index[condition].tolist()[0]
-            vertical_distance_to_edge[index] = (up_offset - 1) * 4 + 1
+            vertical_distance_to_edge[index] = (up_offset - 1) * 2 + 1
 
         down_offset = 1
         while down_offset < up_down_bound + 1:
@@ -535,7 +535,7 @@ def compute_distance_to_edge_single_pool(para_id, fine_token_list, df_text_mappi
         if down_offset < up_down_bound + 1:
             condition = (df_text_mapping_para_id["row"] == row_id) & (df_text_mapping_para_id["col"] == col_id)
             index = df_text_mapping_para_id.index[condition].tolist()[0]
-            vertical_distance_to_edge[index] = (down_offset - 1) * 4 + 1
+            vertical_distance_to_edge[index] = (down_offset - 1) * 2 + 1
 
     # 添加首行的额外权重。
     token_index = 0
@@ -731,26 +731,26 @@ def compute_to_edge_weight():
         df_text_mapping.loc[df_text_mapping["para_id"] == para_id, "first_row_weight"] = first_row_weight
 
     # visualize to check
-    for para_id, df_text_mapping_para_id in df_text_mapping_group_by_para_id:
-        fig, ax = plt.subplots()
-        ax.set_aspect('equal')
-        ax.set_xlim(0, 1920)
-        ax.set_ylim(1200, 0)
-        plt.rcParams['font.sans-serif'] = ['SimSun']  # 指定默认字体
-        df_for_vis = df_text_mapping[df_text_mapping["para_id"] == para_id]
-        for text_unit_index in range(df_for_vis.shape[0]):
-            text = df_for_vis.iloc[text_unit_index]["word"]
-            center_x = df_for_vis.iloc[text_unit_index]["x"]
-            center_y = df_for_vis.iloc[text_unit_index]["y"]
-            width = configs.text_width
-            height = configs.text_height
-            color = (df_for_vis.iloc[text_unit_index]["first_row_weight"] / 5, 0, 0)
-            # color = (df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"] / 5, 0, 0)
-            # color = (df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] / 5, 0, 0)
-            # color = ((df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] + df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"]) / 10, 0, 0)
-            ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=color)
-
-        # plt.show()
+    # for para_id, df_text_mapping_para_id in df_text_mapping_group_by_para_id:
+    #     fig, ax = plt.subplots()
+    #     ax.set_aspect('equal')
+    #     ax.set_xlim(0, 1920)
+    #     ax.set_ylim(1200, 0)
+    #     plt.rcParams['font.sans-serif'] = ['SimSun']  # 指定默认字体
+    #     df_for_vis = df_text_mapping[df_text_mapping["para_id"] == para_id]
+    #     for text_unit_index in range(df_for_vis.shape[0]):
+    #         text = df_for_vis.iloc[text_unit_index]["word"]
+    #         center_x = df_for_vis.iloc[text_unit_index]["x"]
+    #         center_y = df_for_vis.iloc[text_unit_index]["y"]
+    #         width = configs.text_width
+    #         height = configs.text_height
+    #         color = (df_for_vis.iloc[text_unit_index]["first_row_weight"] / 5, 0, 0)
+    #         # color = (df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"] / 5, 0, 0)
+    #         # color = (df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] / 5, 0, 0)
+    #         # color = ((df_for_vis.iloc[text_unit_index]["vertical_edge_weight"] + df_for_vis.iloc[text_unit_index]["horizontal_edge_weight"]) / 10, 0, 0)
+    #         ax.text(center_x, center_y, text, fontsize=15, horizontalalignment='center', verticalalignment='center', color=color)
+    #
+    #     plt.show()
 
     save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_edge_weight.csv"
     df_text_mapping.to_csv(save_file_name, encoding="utf-8_sig", index=False)

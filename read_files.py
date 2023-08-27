@@ -167,6 +167,17 @@ def read_reading_data():
     return reading_data_list_1
 
 
+def sort_reading_data_by_para_id(reading_data):
+    df_list = []
+    for iteration_index in range(len(reading_data)):
+        df_group_by_matrix_x = reading_data[iteration_index].groupby("matrix_x")
+        for para_id, df_matrix_x in df_group_by_matrix_x:
+            df_list.append(df_matrix_x)
+    df_list.sort(key=lambda x: x["matrix_x"].iloc[0])
+    new_df = pd.concat(df_list, ignore_index=True)
+    return new_df
+
+
 def read_tokens(token_type="fine"):
     file_path = f"data/text/{configs.round}/tokens/{token_type}_tokens/"
     file_list = os.listdir(file_path)

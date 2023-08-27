@@ -27,7 +27,7 @@ def get_text_unit_density_single_pool(text_mapping_list, file_index, matrix_x, d
             distance_to_text_unit_list.append(distance_to_gaze)
         # 添加额外的判断，如果距离太远，就不属于任何一个text unit。
         min_distance = min(distance_to_text_unit_list)
-        if min_distance < configs.text_unit_density_threshold:
+        if min_distance < configs.text_unit_density_distance_threshold:
             min_index = distance_to_text_unit_list.index(min(distance_to_text_unit_list))
             text_unit_density[min_index] += 1
     df_text_mapping_of_para_id["text_unit_density"] = text_unit_density

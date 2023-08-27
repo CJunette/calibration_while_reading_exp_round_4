@@ -7,6 +7,7 @@ import pandas as pd
 import analyse_calibration_data
 import analyse_reading_data
 import configs
+import event_detection
 import get_reading_density
 import read_files
 import talk_with_GPT
@@ -57,3 +58,12 @@ if __name__ == '__main__':
 
     # test_pull_gaze_trace.pull_test()
     test_match_with_density.match_with_density()
+
+    # talk_with_GPT.set_openai()
+    # talk_with_GPT.start_using_IDE()
+    # # print(openai.Model.list())
+    # response = openai.ChatCompletion.create(
+    #         model="gpt-3.5-turbo-0613",
+    #         messages=[
+    #             {"role": "user", "content": f"hello。"}])
+    # print(response)
