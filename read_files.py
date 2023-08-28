@@ -107,8 +107,8 @@ def read_all_modified_reading_text_mapping():
     return df_list_1
 
 
-def read_sorted_reading_text_mapping():
-    file_name = f"data/text/{configs.round}/text_sorted_mapping_with_edge_weight.csv"
+def read_reading_text_mapping_with_weight():
+    file_name = f"data/text/{configs.round}/text_sorted_mapping_with_weight.csv"
     df = pd.read_csv(file_name, encoding="utf-8_sig")
 
     return df

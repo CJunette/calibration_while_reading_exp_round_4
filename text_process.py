@@ -750,7 +750,7 @@ def compute_to_edge_weight():
     #
     #     plt.show()
 
-    save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_edge_weight.csv"
+    save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_weight.csv"
     df_text_mapping.to_csv(save_file_name, encoding="utf-8_sig", index=False)
 
 
@@ -767,12 +767,11 @@ def process_gpt_text_unit_weight(weight_file_name):
     sorted_df = pd.concat(df_list, ignore_index=True)
     gpt_weight = sorted_df["weight"].tolist()
 
-    text_mapping_file_name = f"data/text/{configs.round}/text_sorted_mapping.csv"
-    df_text_mapping = pd.read_csv(text_mapping_file_name, encoding="utf-8_sig")
-    df_text_mapping.drop("Unnamed: 0", axis=1, inplace=True)
+    weighted_text_mapping_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_weight.csv"
+    df_text_mapping = pd.read_csv(weighted_text_mapping_file_name, encoding="utf-8_sig")
     df_text_mapping["gpt_weight"] = gpt_weight
 
-    save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_gpt_weight.csv"
+    save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_weight.csv"
     df_text_mapping.to_csv(save_file_name, encoding="utf-8_sig", index=False)
 
 

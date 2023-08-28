@@ -697,21 +697,17 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
 def match_with_density():
     std_points = analyse_calibration_data.create_standard_calibration_points()
     std_points_1d = np.array(std_points).reshape(-1, 2)
-    std_point_x_min = std_points_1d[:, 0].min() - configs.text_width / 2
-    std_point_x_max = std_points_1d[:, 0].max() + configs.text_width / 2
-    std_point_y_min = std_points_1d[:, 1].min() - configs.text_height / 2
-    std_point_y_max = std_points_1d[:, 1].max() + configs.text_height / 2
-    std_point_box = (std_point_x_min, std_point_x_max, std_point_y_min, std_point_y_max)
 
     reading_data_list = read_files.read_reading_data()
     cali_data_list = read_files.read_calibration_data()
     text_mapping_list = read_files.read_all_modified_reading_text_mapping()
-    sorted_text_mapping = read_files.read_sorted_reading_text_mapping()
+    text_mapping_with_weight = read_files.read_reading_text_mapping_with_weight()
 
     for file_index in range(len(text_mapping_list)):
-        text_mapping_list[file_index]["horizontal_edge_weight"] = sorted_text_mapping["horizontal_edge_weight"]
-        text_mapping_list[file_index]["vertical_edge_weight"] = sorted_text_mapping["vertical_edge_weight"]
-        text_mapping_list[file_index]["first_row_weight"] = sorted_text_mapping["first_row_weight"]
+        text_mapping_list[file_index]["horizontal_edge_weight"] = text_mapping_with_weight["horizontal_edge_weight"]
+        text_mapping_list[file_index]["vertical_edge_weight"] = text_mapping_with_weight["vertical_edge_weight"]
+        text_mapping_list[file_index]["first_row_weight"] = text_mapping_with_weight["first_row_weight"]
+        text_mapping_list[file_index]["gpt_weight"] = text_mapping_with_weight["gpt_weight"]
 
     # 为reading数据和calibration数据添加一个偏移。
     for file_index in range(len(reading_data_list)):
