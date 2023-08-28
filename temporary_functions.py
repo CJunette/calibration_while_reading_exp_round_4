@@ -485,3 +485,18 @@ def compute_edge_point_distance():
     for i in range(len(points)):
         print(points_names[i], distance_list[i])
 
+
+def change_punctuation_weight(weight_file_name):
+    weight_file_prefix = f"data/text/{configs.round}/weight/"
+    weight_df = pd.read_csv(f"{weight_file_prefix}{weight_file_name}", encoding="utf-8_sig")
+
+    weight_list = []
+    for text_unit_index in range(weight_df.shape[0]):
+        text_unit = weight_df["text_unit"].iloc[text_unit_index]
+        weight = weight_df["weight"].iloc[text_unit_index]
+        if text_unit in configs.punctuation_list:
+            weight = 1
+        weight_list.append(weight)
+    weight_df["weight"] = weight_list
+
+    weight_df.to_csv(f"{weight_file_prefix}{weight_file_name}", encoding="utf-8_sig", index=False)

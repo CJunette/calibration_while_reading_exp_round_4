@@ -187,7 +187,7 @@ def compute_homography_penalty(H):
     if abs(theta) > 5:
         penalty += configs.H_rotation_penalty
         # print(f"rotation penalty, theta: {theta}")
-    if (not 0.8 <= scale_x <= 1.2) or (not 0.8 <= scale_y <= 1.2):
+    if (not 0.85 <= scale_x <= 1.15) or (not 0.9 <= scale_y <= 1.1):
         penalty += configs.H_scale_penalty
         # print(f"scale penalty, scale_x: {scale_x}, scale_y: {scale_y}")
     if abs(shear_x) > 0.03 or abs(shear_y) > 0.03:
@@ -230,9 +230,13 @@ def compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_dista
         min_dist_to_std_index = np.argmin(absolute_distance_matrix[:, gaze_index])
         gaze_corresponding_std_list[gaze_index] = min_dist_to_std_index
         min_dist_to_std = absolute_distance_matrix[min_dist_to_std_index, gaze_index]
-        # 对于离最近的std特别远的点，给一个额外的惩罚。
-        if min_dist_to_std > configs.dist_threshold_from_std:
+        # 完全离群的点，给一个定值惩罚。
+        if min_dist_to_std > 200:
+            min_dist_to_std = 200 * configs.far_from_text_unit_penalty
+        # 对于离最近的std特别远的点（但还不至于离群），给一个额外的惩罚。
+        elif min_dist_to_std > configs.dist_threshold_from_std:
             min_dist_to_std = (min_dist_to_std - configs.dist_threshold_from_std) * configs.far_from_text_unit_penalty
+
         # if min_dist_to_std > 40:
         #     min_dist_to_std = configs.far_from_text_unit_penalty
         absolute_dist_list[gaze_index] += min_dist_to_std
@@ -359,7 +363,7 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
 
     def init(H_init):
         population = [H_init]
-        for population_index in range(int(population_size * 3 / 4)):
+        for population_index in range(int(population_size / 2)):
             random_set = np.random.choice(len(src_pts), size=int(len(src_pts) / 5))
             selected_scr_points = src_pts[random_set]
             selected_dst_points = dst_pts[random_set]
@@ -538,7 +542,7 @@ def min_match_with_weighted_dist(gaze_points, std_points_1d, absolute_distance_m
 '''EM SOLUTION'''
 
 
-def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, log_file=None, max_iteration=50):
+def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, log_file=None, max_iteration=15):
     H = np.eye(3)
     cov_init = np.array([[12, 0], [0, 12]]) * 2
     gaussian_std_points = [{'mean': std_points_1d[i], 'cov': cov_init} for i in range(len(std_points_1d))]
@@ -615,7 +619,7 @@ def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
 
     log_file.close()
 
-def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, max_iteration=100):
+def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, max_iteration=5):
     H = np.eye(3)
     # for matrix_x, df_reading_data_matrix_x in df_reading_data_group_by_matrix_x:
     responsibilities = np.zeros((len(std_points_1d), df_gaze_data.shape[0]))
@@ -665,9 +669,10 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
         unfitness = compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list)
         print(unfitness[0], unfitness[1], unfitness[2])
 
-        structural_dist_list = unfitness[3][1]
-        max_structural_dist = max(structural_dist_list)
-        gaze_color_list = [(structural_dist_list[i] / max_structural_dist, 0, 0) for i in range(len(structural_dist_list))]
+        target_dist_list = unfitness[3][0]
+        target_dist_list.sort(reverse=True)
+        max_structural_dist = max(target_dist_list)
+        gaze_color_list = [(target_dist_list[i] / max_structural_dist, 0, 0) for i in range(len(target_dist_list))]
 
         bias = analyse_calibration_data.compute_bias_between_cali_centroids_and_std_points(cali_point_1d, std_points_1d, H)
         print(f"BIAS: {bias}")
@@ -782,118 +787,25 @@ def match_with_density():
         gaze_density_list.append(density_list)
 
     # 根据labels，挑选出需要的training_reading和gaze_density。去掉那些label为-2, -1, 3的样本点。
-    # for file_index in range(len(training_reading_data)):
-    #     combined_labels = np.concatenate(training_reading_labels[file_index])
-    #     drop_rows = []
-    #     for gaze_index in range(len(combined_labels)):
-    #         if combined_labels[gaze_index] == -1 or combined_labels[gaze_index] == -2 or combined_labels[gaze_index] == 3:
-    #             drop_rows.append(gaze_index)
-    #     drop_rows = np.array(drop_rows)
-    #     if len(drop_rows) > 0:
-    #         training_reading_data[file_index] = training_reading_data[file_index].reset_index().drop(drop_rows)
-    #         training_reading_data[file_index].reset_index(inplace=True, drop=True)
-    #         gaze_density_list[file_index] = np.delete(np.array(gaze_density_list[file_index]), drop_rows)
-    #     else:
-    #         training_reading_data[file_index].reset_index(inplace=True, drop=True)
-
-    # 找到每个样本的外包矩形，对齐两个矩形的左上角，然后将reading数据平移。然后通过x_min和y_min计算相对位置。 # FIXME 感觉这里似乎没什么用处了。
-    # for file_index in range(len(training_reading_data)):
-    # # for file_index in range(1):
-    #     print(file_index)
-    #     gaze_x = np.array(training_reading_data[file_index]["gaze_x"].values.tolist())
-    #     gaze_y = np.array(training_reading_data[file_index]["gaze_y"].values.tolist())
-    #     para_id = np.array(training_reading_data[file_index]["matrix_x"].values.tolist())
-    #     points = np.array([[gaze_x[i], gaze_y[i]] for i in range(len(gaze_x))], dtype=np.float32)
-
-        # 基于统计的方法。
-        # Q1_x = np.percentile(gaze_x, 25)
-        # Q3_x = np.percentile(gaze_x, 75)
-        # IQR_x = Q3_x - Q1_x
-        #
-        # Q1_y = np.percentile(gaze_y, 25)
-        # Q3_y = np.percentile(gaze_y, 75)
-        # IQR_y = Q3_y - Q1_y
-        #
-        # bound_coeff_x = 1
-        # bound_coeff_y = 0.5
-        # # 使用IQR确定离群点的界限
-        # lower_bound_x = Q1_x - bound_coeff_x * IQR_x
-        # upper_bound_x = Q3_x + bound_coeff_x * IQR_x
-        # lower_bound_y = Q1_y - 0.25 * IQR_y
-        # upper_bound_y = Q3_y + 0.75 * IQR_y
-        #
-        # # 过滤离群点
-        # filtered_data = points[(points[:, 0] >= lower_bound_x) & (points[:, 0] <= upper_bound_x) & (points[:, 1] >= lower_bound_y) & (points[:, 1] <= upper_bound_y)]
-        # x_min = filtered_data[:, 0].min()
-        # x_max = filtered_data[:, 0].max()
-        # y_min = filtered_data[:, 1].min()
-        # y_max = filtered_data[:, 1].max()
-
-        # # 基于IsolationForest的方法。
-        # clf = IsolationForest(contamination=0.15, random_state=42)
-        # outliers = clf.fit_predict(points)
-        #
-        # # 将正常点和离群点分开
-        # filtered_data = points[outliers == 1]
-        # left_out_data = points[outliers == -1]
-        #
-        # x_min = filtered_data[:, 0].min()
-        # x_max = filtered_data[:, 0].max()
-        # y_min = filtered_data[:, 1].min()
-        # y_max = filtered_data[:, 1].max()
-
-        # 基于领域的方法。
-        # sampled_data = np.array(random.sample(points.tolist(), int(len(points) * 0.3)))
-        # # 为采样的数据计算距离
-        # distances_sampled = distance.cdist(sampled_data, sampled_data, 'euclidean')
-        # # 对于每个点，获取其到其他点的距离，并取最近的k个点的平均距离
-        # avg_distances_sampled = np.sort(distances_sampled)[:, 1:25].mean(axis=1)
-        # # 使用距离的75th百分位数作为阈值
-        # threshold_sampled = np.percentile(avg_distances_sampled, 65)
-        # # 标识离群点
-        # outliers_sampled = avg_distances_sampled > threshold_sampled
-        # # 将正常点和离群点分开
-        # filtered_data = sampled_data[~outliers_sampled]
-        # left_out_data = sampled_data[outliers_sampled]
-        # x_min = filtered_data[:, 0].min()
-        # x_max = filtered_data[:, 0].max()
-        # y_min = filtered_data[:, 1].min()
-        # y_max = filtered_data[:, 1].max()
-
-        # 计算以x_min，y_min为原点的相对密度。
-        # relative_gaze_x_list = []
-        # relative_gaze_y_list = []
-        # for gaze_index in range(training_reading_data[file_index].shape[0]):
-        #     gaze_x = training_reading_data[file_index]["gaze_x"]
-        #     gaze_y = training_reading_data[file_index]["gaze_y"]
-        #     relative_gaze_x = (gaze_x - x_min) / (x_max - x_min)
-        #     relative_gaze_y = (gaze_y - y_min) / (y_max - y_min)
-        #     relative_gaze_x_list.append(relative_gaze_x)
-        #     relative_gaze_y_list.append(relative_gaze_y)
-        # training_reading_data[file_index]["relative_gaze_x"] = relative_gaze_x_list
-        # training_reading_data[file_index]["relative_gaze_y"] = relative_gaze_y_list
-
-        # fig, ax = plt.subplots()
-        # ax.set_xlim(0, 1920)
-        # ax.set_ylim(1200, 0)
-        # ax.scatter(gaze_x, gaze_y, s=1, c='k')
-        # rect = plt.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, fill=False, edgecolor='r', linewidth=1)
-        # ax.add_patch(rect)
-        # plt.show()
-
-        # 对齐两个矩形的左上角。
-        # move_between_boxes = [std_point_box[0] - x_min, std_point_box[2] - y_min] # TODO debug完了取消注释。
-        # print(move_between_boxes)
-        #
-        # for gaze_index in range(training_reading_data[file_index].shape[0]):
-        #     training_reading_data[file_index]["gaze_x"].iloc[gaze_index] += move_between_boxes[0]
-        #     training_reading_data[file_index]["gaze_y"].iloc[gaze_index] += move_between_boxes[1]
+    for file_index in range(len(training_reading_data)):
+        combined_labels = np.concatenate(training_reading_labels[file_index])
+        drop_rows = []
+        for gaze_index in range(len(combined_labels)):
+            if combined_labels[gaze_index] == -1 or combined_labels[gaze_index] == -2 or combined_labels[gaze_index] == 3:
+                drop_rows.append(gaze_index)
+        drop_rows = np.array(drop_rows)
+        if len(drop_rows) > 0:
+            training_reading_data[file_index] = training_reading_data[file_index].reset_index().drop(drop_rows)
+            training_reading_data[file_index].reset_index(inplace=True, drop=True)
+            gaze_density_list[file_index] = np.delete(np.array(gaze_density_list[file_index]), drop_rows)
+        else:
+            training_reading_data[file_index].reset_index(inplace=True, drop=True)
 
     file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
     file_name_list = os.listdir(file_path)
 
-    # for file_index in range(len(training_reading_data)):
-    for file_index in range(2, 3):
+    for file_index in range(len(training_reading_data)):
+    # for file_index in range(1):
         log_path = f"output/alignment/{configs.round}/{configs.device}/{file_name_list[file_index]}/"
         if not os.path.exists(log_path):
             os.makedirs(os.path.dirname(log_path))

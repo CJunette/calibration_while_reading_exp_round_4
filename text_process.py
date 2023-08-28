@@ -754,6 +754,26 @@ def compute_to_edge_weight():
     df_text_mapping.to_csv(save_file_name, encoding="utf-8_sig", index=False)
 
 
+def process_gpt_text_unit_weight(weight_file_name):
+    weight_file_prefix = f"data/text/{configs.round}/weight/"
+    weight_df = pd.read_csv(f"{weight_file_prefix}{weight_file_name}", encoding="utf-8_sig")
+    para_id_list = weight_df["para_id"].unique()
+    para_id_list.sort()
+
+    df_list = []
+    for para_id in para_id_list:
+        df_list.append(weight_df[weight_df["para_id"] == para_id])
+
+    sorted_df = pd.concat(df_list, ignore_index=True)
+    gpt_weight = sorted_df["weight"].tolist()
+
+    text_mapping_file_name = f"data/text/{configs.round}/text_sorted_mapping.csv"
+    df_text_mapping = pd.read_csv(text_mapping_file_name, encoding="utf-8_sig")
+    df_text_mapping.drop("Unnamed: 0", axis=1, inplace=True)
+    df_text_mapping["gpt_weight"] = gpt_weight
+
+    save_file_name = f"data/text/{configs.round}/text_sorted_mapping_with_gpt_weight.csv"
+    df_text_mapping.to_csv(save_file_name, encoding="utf-8_sig", index=False)
 
 
 

@@ -28,6 +28,11 @@ def get_density():
     get_reading_density.get_token_density() # 将text_unit的密度组合成为token的密度。经过这个函数后，token的行会被调整为其所在的真实行（之前都是1-3之间，现在会根据text_unit的位置被调整为1-3或4-6）。
 
 
+def get_weight_of_text(gpt_weight_file_name):
+    # text_process.compute_to_edge_weight()
+    text_process.process_gpt_text_unit_weight(gpt_weight_file_name)
+
+
 if __name__ == '__main__':
     # temporary_functions.combine_data() # 将round4中出错的两轮实验的数据合并在一个file里。
     # temporary_functions.split_data_in_round_1() # 用来将round1中合并的数据拆分成其他round那样的格式。
@@ -39,8 +44,7 @@ if __name__ == '__main__':
     # temporary_functions.ask_gpt_to_subsume_article() # 让gpt把文本进行分析，同时给出5个关键词。
     # temporary_functions.read_article_category() # 将刚才的分类结果导入，并用gpt对这些文本类型进行分类。
     # temporary_functions.compute_edge_point_distance() # 计算对于std points，边界上的点到每个std point的距离。
-
-    # text_process.compute_to_edge_weight()
+    # temporary_functions.change_punctuation_weight("8_28_coarse_test_from_gpt_0-108.csv") # 用于强制将weight文件中的标点权重修改为1。
 
     # analyse_reading_data.render_point_density_hist()
     # analyse_reading_data.match_manual_weight_and_gaze_density()
@@ -51,19 +55,14 @@ if __name__ == '__main__':
 
     # get_token_info()
     # get_density()
+
     # talk_with_GPT.save_fine_tune_data()
     # talk_with_GPT.test_gpt_fine_tune_prediction()
-
     # talk_with_GPT.get_gpt_prediction("coarse")
+
+    # get_weight_of_text("8_28_coarse_test_from_gpt_0-108.csv") # 用于获取text_unit的的结构weight和gpt语义weight。
+
 
     # test_pull_gaze_trace.pull_test()
     test_match_with_density.match_with_density()
 
-    # talk_with_GPT.set_openai()
-    # talk_with_GPT.start_using_IDE()
-    # # print(openai.Model.list())
-    # response = openai.ChatCompletion.create(
-    #         model="gpt-3.5-turbo-0613",
-    #         messages=[
-    #             {"role": "user", "content": f"hello。"}])
-    # print(response)
