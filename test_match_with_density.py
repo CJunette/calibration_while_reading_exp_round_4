@@ -19,7 +19,6 @@ import read_files
 import test_pull_gaze_trace
 
 
-
 '''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
 '''COMPUTE DISTANCE'''
 
@@ -57,24 +56,16 @@ def compute_structural_distance_matrix(gaze_data, std_data, gaze_density, struct
             col = df["col"].iloc[text_unit_index]
             weight = df[key].iloc[text_unit_index]
             token = df["word"].iloc[text_unit_index]
-            # 当点较为稀疏时，只给予很小的惩罚。 # FIXME 这里的代码有问题，但似乎跑的还可以。
-            if gaze_density[text_unit_index] < configs.text_unit_density_distance_threshold:
-                weight = -gaze_density[text_unit_index] * 2
-            else:
-                if token.strip() == "":
-                    continue
-                if token in configs.punctuation_list:
-                    weight = configs.punctuation_text_unit_penalty
+            if token.strip() == "":
+                continue
+            if token in configs.punctuation_list:
+                weight = configs.punctuation_text_unit_penalty
             blank_weight_list[row * configs.col_num + col] = weight
 
         return blank_weight_list
     # 首先根据不同的para_id，把weight分配好。
     para_id_list = structural_weight["para_id"].unique()
     para_id_list = np.sort(para_id_list)
-
-    horizontal_weight_matrix = np.array([[configs.empty_text_unit_penalty for _ in range(len(gaze_data))] for _ in range(len(std_data))])
-    vertical_weight_matrix = np.array([[configs.empty_text_unit_penalty for _ in range(len(gaze_data))] for _ in range(len(std_data))])
-    first_row_weight_matrix = np.array([[configs.empty_text_unit_penalty for _ in range(len(gaze_data))] for _ in range(len(std_data))])
 
     gaze_para_id_segment = []
     gaze_para_id_sub_segment = []
@@ -94,28 +85,73 @@ def compute_structural_distance_matrix(gaze_data, std_data, gaze_density, struct
             gaze_para_id_segment.append(gaze_para_id_sub_segment)
             gaze_index += 1
 
+    # 然后对每个para_id，分别分配不同的weight。
+    horizontal_weight_matrix = np.array([[configs.empty_text_unit_penalty for _ in range(len(gaze_data))] for _ in range(len(std_data))])
+    vertical_weight_matrix = np.array([[configs.empty_text_unit_penalty for _ in range(len(gaze_data))] for _ in range(len(std_data))])
+    first_row_weight_matrix = np.array([[configs.empty_text_unit_penalty for _ in range(len(gaze_data))] for _ in range(len(std_data))])
+
+    horizontal_weight_list_1 = []
+    vertical_weight_list_1 = []
+    first_row_weight_list_1 = []
+
     for para_id_index in range(len(para_id_list)):
         df = structural_weight[structural_weight["para_id"] == para_id_list[para_id_index]]
-        horizontal_weight_list = add_weight_to_blank_weight_list(df, "horizontal_edge_weight")
-        vertical_weight_list = add_weight_to_blank_weight_list(df, "vertical_edge_weight")
-        first_row_weight_list = add_weight_to_blank_weight_list(df, "first_row_weight")
+        horizontal_weight_list_2 = add_weight_to_blank_weight_list(df, "horizontal_edge_weight")
+        vertical_weight_list_2 = add_weight_to_blank_weight_list(df, "vertical_edge_weight")
+        first_row_weight_list_2 = add_weight_to_blank_weight_list(df, "first_row_weight")
 
+        horizontal_weight_list_1.append(horizontal_weight_list_2)
+        vertical_weight_list_1.append(vertical_weight_list_2)
+        first_row_weight_list_1.append(first_row_weight_list_2)
+
+        # 将获得的weight添加到matrix中。
         for gaze_index in gaze_para_id_segment[para_id_index]:
-            horizontal_weight_matrix[:, gaze_index] = horizontal_weight_list
-            vertical_weight_matrix[:, gaze_index] = vertical_weight_list
-            first_row_weight_matrix[:, gaze_index] = first_row_weight_list
+            horizontal_weight_matrix[:, gaze_index] = horizontal_weight_list_2
+            vertical_weight_matrix[:, gaze_index] = vertical_weight_list_2
+            first_row_weight_matrix[:, gaze_index] = first_row_weight_list_2
+        # 根据每个gaze的密度，对是空格或标点的text_unit的weight进行调整。
+        text_covered_std_indices = []
+        for text_unit_index in range(df.shape[0]):
+            row = df["row"].iloc[text_unit_index]
+            col = df["col"].iloc[text_unit_index]
+            token = df["word"].iloc[text_unit_index]
+            text_covered_std_indices.append(row * configs.col_num + col)
+            if token.strip() == "" or token in configs.punctuation_list:
+                for gaze_index in range(len(horizontal_weight_matrix[0])):
+                    density = gaze_density[gaze_index]
+                    if density < configs.text_unit_density_threshold_for_empty:
+                        horizontal_weight_matrix[row * configs.col_num + col, gaze_index] -= -density / 2.5
+                        vertical_weight_matrix[row * configs.col_num + col, gaze_index] -= -density / 2.5
+                        first_row_weight_matrix[row * configs.col_num + col, gaze_index] -= -density / 2.5
+        # 对没有任何字符的text_unit，根据gaze密度进行修正。
+        for text_unit_index in range(len(std_data)):
+            if text_unit_index in text_covered_std_indices:
+                continue
+            else:
+                if gaze_density[text_unit_index] < configs.text_unit_density_threshold_for_empty:
+                    for gaze_index in range(len(horizontal_weight_matrix[0])):
+                        density = gaze_density[gaze_index]
+                        horizontal_weight_matrix[text_unit_index, gaze_index] -= -density / 2.5
+                        vertical_weight_matrix[text_unit_index, gaze_index] -= -density / 2.5
+                        first_row_weight_matrix[text_unit_index, gaze_index] -= -density / 2.5
 
-    structural_weight_matrix = 0.6 * horizontal_weight_matrix + 0.05 * vertical_weight_matrix + 0.35 * first_row_weight_matrix
-    gaze_density_exp = 1 + 4 / (1 + np.exp(-1 * (gaze_density - 5)))
+    horizontal_weight_list_1 = np.array(horizontal_weight_list_1)
+    vertical_weight_list_1 = np.array(vertical_weight_list_1)
+    first_row_weight_list_1 = np.array(first_row_weight_list_1)
+
+    # 合并各个weight matrix，得到最终的结果。
+    structural_weight_matrix = 0.9 * horizontal_weight_matrix + 0.01 * vertical_weight_matrix + 0.09 * first_row_weight_matrix
+    # gaze_density_exp = 1 + 4 / (1 + np.exp(-1 * (gaze_density - 5)))
+    gaze_density_exp = 1 + 4 / (1 + np.exp(-1.1 * (gaze_density - 6)))
     gaze_density_matrix = gaze_density_exp[np.newaxis, :]
     structural_distance_matrix = np.abs(structural_weight_matrix - gaze_density_matrix)
     structural_distance_matrix = np.square(structural_distance_matrix) / 2
     # 密度匹配正确与否的差距大概在2倍，一般是0.6, 1.3或2, 4。
-    return structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix)
+    return structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix), (horizontal_weight_list_1, vertical_weight_list_1, first_row_weight_list_1)
 
 
 def compute_distance(absolute_distance_matrix, structural_distance_matrix):
-    hybrid_distance_matrix = absolute_distance_matrix + structural_distance_matrix * 0.1
+    hybrid_distance_matrix = absolute_distance_matrix + structural_distance_matrix * 0.05
     return hybrid_distance_matrix
 
 
@@ -151,10 +187,10 @@ def compute_homography_penalty(H):
     if abs(theta) > 5:
         penalty += configs.H_rotation_penalty
         # print(f"rotation penalty, theta: {theta}")
-    if (not 0.9 <= scale_x <= 1.1) or (not 0.8 <= scale_y <= 1.2):
+    if (not 0.8 <= scale_x <= 1.2) or (not 0.8 <= scale_y <= 1.2):
         penalty += configs.H_scale_penalty
         # print(f"scale penalty, scale_x: {scale_x}, scale_y: {scale_y}")
-    if abs(shear_x) > 0.02 or abs(shear_y) > 0.02:
+    if abs(shear_x) > 0.03 or abs(shear_y) > 0.03:
         penalty += configs.H_shear_penalty
         # print(f"shear penalty, shear_x: {shear_x}, shear_y: {shear_y}")
     if abs(perspective_x) > 0.002 or abs(perspective_y) > 0.002:
@@ -172,42 +208,115 @@ def compute_homography_penalty(H):
     return penalty, theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y
 
 
-def compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix):
+def compute_first_row_penalty(init_first_row_penalty_copy, text_unit_num_list):
+    total_penalty = 0
+    for para_index in range(len(init_first_row_penalty_copy)):
+        total_penalty += sum(init_first_row_penalty_copy[para_index][:30]) / text_unit_num_list[para_index][0] + sum(init_first_row_penalty_copy[para_index][-30:]) / text_unit_num_list[para_index][1]
+    return total_penalty
+
+
+def compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list):
+    init_first_row_penalty_copy = [init_first_row_penalty_list[i].copy() for i in range(len(init_first_row_penalty_list))]
+    para_id_list = np.unique(gaze_para_id_list)
+    para_id_list = np.sort(para_id_list)
+
     transformed_src_pts = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
     absolute_distance_matrix = compute_absolute_distance_matrix(transformed_src_pts, std_points_1d)
-    # dist_from_hybrid指每个gaze点到最近的std点的距离之和。
     absolute_dist_list = [0 for _ in range(len(gaze_points))]
     structural_dist_list = [0 for _ in range(len(gaze_points))]
-    dist_from_hybrid_list = [0 for _ in range(len(gaze_points))]
+    hybrid_dist_list = [0 for _ in range(len(gaze_points))]
+    gaze_corresponding_std_list = [None for _ in range(len(gaze_points))]
     for gaze_index in range(len(absolute_distance_matrix[0])):
         min_dist_to_std_index = np.argmin(absolute_distance_matrix[:, gaze_index])
+        gaze_corresponding_std_list[gaze_index] = min_dist_to_std_index
         min_dist_to_std = absolute_distance_matrix[min_dist_to_std_index, gaze_index]
         # 对于离最近的std特别远的点，给一个额外的惩罚。
-        if min_dist_to_std > 32:
-            min_dist_to_std = (min_dist_to_std - 32) * configs.outside_text_unit_penalty
+        if min_dist_to_std > configs.dist_threshold_from_std:
+            min_dist_to_std = (min_dist_to_std - configs.dist_threshold_from_std) * configs.far_from_text_unit_penalty
         # if min_dist_to_std > 40:
-        #     min_dist_to_std = configs.outside_text_unit_penalty
+        #     min_dist_to_std = configs.far_from_text_unit_penalty
         absolute_dist_list[gaze_index] += min_dist_to_std
         structural_dist_to_std = structural_distance_matrix[min_dist_to_std_index, gaze_index]
-        structural_dist_list.append(structural_dist_to_std)
+        structural_dist_list[gaze_index] = structural_dist_to_std
         # if structural_dist_to_std > 10000:
         #     print()
-        dist_from_hybrid_list[gaze_index] += min_dist_to_std + structural_dist_to_std
-        # dist_from_hybrid_list[gaze_index] += min_dist_to_std
+        hybrid_dist_list[gaze_index] += min_dist_to_std + structural_dist_to_std
+        # hybrid_dist_list[gaze_index] += min_dist_to_std
         # if gaze_index == 330:
         #     print(transformed_src_pts[gaze_index], min_dist_to_std_index, min_dist_to_std, structural_dist_to_std)
 
-    dist_from_hybrid = np.mean(dist_from_hybrid_list)
+        # 在计算距离的同时，把first_row_penalty所需要的信息也记录下来。
+        para_id = int(gaze_para_id_list[gaze_index])
+        para_index = np.where(para_id_list == para_id)[0][0]
+        if min_dist_to_std_index in init_first_row_std_index_set[para_index]:
+            init_first_row_penalty_copy[para_index][min_dist_to_std_index] = 0
+
+    # dist_from_hybrid指每个gaze点到最近的std点的物理距离与结构距离之和。
+    dist_from_hybrid = np.mean(hybrid_dist_list)
     dist_from_absolute = np.mean(absolute_dist_list)
     dist_from_structure = np.mean(structural_dist_list)
+
     # dist_from_H指H过大的变化量带来的惩罚。
     dist_from_H, theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y = compute_homography_penalty(H)
     # dist_from_H = 0
     # print(dist_from_hybrid, dist_from_H, space_ratio)
-    return dist_from_hybrid + dist_from_H, (dist_from_hybrid, dist_from_absolute, dist_from_structure, dist_from_H), (theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y)
+
+    # dist_from_fist_row指第一行缺失文字造成的惩罚。
+    dist_from_fist_row = compute_first_row_penalty(init_first_row_penalty_copy, text_unit_num_list)
+
+    total_dist = dist_from_hybrid + dist_from_H + dist_from_fist_row
+
+    return total_dist, (dist_from_hybrid, dist_from_absolute, dist_from_structure, dist_from_H, dist_from_fist_row), (theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y), (absolute_dist_list, structural_dist_list, hybrid_dist_list)
 
 
-def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std_points_1d, structural_distance_matrix, H_init, population_size=500, generations=20):
+def prepare_first_row_penalty(text_mapping):
+    para_id_list = text_mapping["para_id"].unique()
+    para_id_list = np.sort(para_id_list)
+
+    row_to_use = 2
+
+    penalty_list_1 = []
+    std_index_list_1 = []
+    text_unit_num_list_1 = []
+    for para_index in range(len(para_id_list)):
+        df = text_mapping[text_mapping["para_id"] == para_id_list[para_index]]
+        row_list = df["row"].unique()
+        row_list.sort()
+
+        length_of_row = min(row_to_use, len(row_list))
+        max_row = row_list[length_of_row - 1]
+
+        penalty_list_2 = [0 for _ in range(configs.col_num * (max_row + 1))]
+        std_index_list_2 = [-1 for _ in range(configs.col_num * (max_row + 1))]
+        text_unit_num_list_2 = []
+        for row_index in range(min(row_to_use, len(row_list))):
+            col_list = df[df["row"] == row_list[row_index]]["col"].unique()
+            text_unit_num = 0
+            for index in range(len(col_list)):
+                token = df[df["row"] == row_list[row_index]][df["col"] == col_list[index]]["word"].iloc[0]
+                if token.strip() == "" or token in configs.punctuation_list:
+                    penalty = 0
+                else:
+                    if col_list[index] < configs.col_num / 4:
+                        penalty = configs.first_row_text_penalty / (row_index + 1)
+                        text_unit_num += 1
+                    elif col_list[index] < configs.col_num / 2:
+                        penalty = configs.first_row_text_penalty / ((row_index + 1) * 2)
+                        text_unit_num += 1
+                    else:
+                        penalty = 0
+                penalty_list_2[row_list[row_index] * configs.col_num + index] = penalty
+                std_index_list_2[row_list[row_index] * configs.col_num + index] = row_list[row_index] * configs.col_num + col_list[index]
+            text_unit_num_list_2.append(text_unit_num)
+
+        penalty_list_1.append(penalty_list_2)
+        std_index_list_1.append(set(std_index_list_2))
+        text_unit_num_list_1.append(text_unit_num_list_2)
+
+    return penalty_list_1, std_index_list_1, text_unit_num_list_1
+
+
+def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std_points_1d, structural_distance_matrix, H_init, gaze_para_id_list, text_mapping, log_file, std_points_color_list=None, population_size=500, generations=5):
     '''
 
     :param src_pts: 来自gaze的匹配点。
@@ -216,6 +325,7 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
     :param std_points_1d: 标准校准点数据。
     :param structural_distance_matrix: 结构语义距离矩阵。
     :param H_init: 初始的H，第一轮时，是对角阵；之后是上一轮最优的矩阵。
+    :param std_points_color_list: 在可视化时使用的std points的颜色列表。如果存在多个para，则只能呈现一个，具体哪一个需要在外面设置。
     :param population_size: 种群大小。
     :param generations: 迭代次数。
     :return:
@@ -239,11 +349,13 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
         unfitness = unfitness_result[:, 0]
         unfitness_args = unfitness_result[:, 2]
         unfitness_dist_details = unfitness_result[:, 1]
+        unfitness_dist_list_details = unfitness_result[:, 3]
         sorted_indices = np.argsort(unfitness)
         sorted_unfitness = np.sort(unfitness)
         selected_population = [population[i] for i in sorted_indices[:population_size // 2]]
         selected_args = [unfitness_args[i] for i in sorted_indices[:population_size // 2]]
-        return selected_population, sorted_unfitness, unfitness_dist_details, selected_args
+        structural_dist_list_of_best = unfitness_dist_list_details[sorted_indices[0]][1]
+        return selected_population, sorted_unfitness, unfitness_dist_details, selected_args, structural_dist_list_of_best
 
     def init(H_init):
         population = [H_init]
@@ -267,24 +379,33 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
 
     # initiate
     population = init(H_init)
-
+    # 为first_row_penalty做准备。
+    init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list = prepare_first_row_penalty(text_mapping)
     with Pool(16) as p:
+        last_gaze_points = gaze_points.copy()
+
         for generation in range(generations):
             print(f"generation: {generation}")
+            if configs.bool_log:
+                log_file.write("-" * 100 + "\n" + f"generation: {generation}" + "\n")
+                log_file.flush()
+
             args_list = []
             unfitness = []
             for H in population:
-                args_list.append((H, gaze_points, std_points_1d, structural_distance_matrix))
-                # unfitness.append(compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix))
+                args_list.append((H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
+                # unfitness.append(compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
             unfitness = p.starmap(compute_unfitness_in_generic, args_list)
-
-            selected_population, sorted_unfitness, unfitness_dist_details, selected_args = select(population, unfitness)
-            # for i in range(len(selected_population)):
-            #     if selected_population[i][1][2] > 64:
-            #         print(selected_population[i], sorted_unfitness[i])
+            selected_population, sorted_unfitness, unfitness_dist_details, selected_args, structural_dist_list_of_best = select(population, unfitness)
             best_H = selected_population[0]
             print(f"best H: {selected_population[0]}, best unfitness: {sorted_unfitness[0]}, best args: {selected_args[0]}\n"
                   f"best unfitness_detail: {unfitness_dist_details[0]}")
+            if configs.bool_log:
+                log_file.write(f"best H: {selected_population[0]}\n"
+                               f"best unfitness: {sorted_unfitness[0]}\n"
+                               f"best args: {selected_args[0]}\n"
+                               f"best unfitness_detail: {unfitness_dist_details[0]}\n")
+                log_file.flush()
             # print(f"unfitness: {sorted_unfitness[:10]}")
             transformed_gaze_points = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), best_H).reshape(-1, 2)
 
@@ -302,23 +423,38 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
                     new_population[i] = mutate(new_population[i])
             population = selected_population + new_population
 
+            # visualize result.
+            # structural_dist_of_best_H = structural_dist_list_of_best
+            # max_structural_dist = max(structural_dist_of_best_H)
+            # gaze_color_list = [(structural_dist_of_best_H[i] / max_structural_dist, 0, 0) for i in range(len(structural_dist_of_best_H))]
             # fig, ax = plt.subplots(figsize=(12, 8))
             # ax.set_xlim(0, 1920)
             # ax.set_ylim(1200, 0)
             # ax.set_aspect("equal")
-            # ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
-            # ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='blue', alpha=0.8)
-            # ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color='red', alpha=0.5)
+            # if std_points_color_list is not None:
+            #     ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker="x")
+            # else:
+            #     ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
+            # ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='blue', alpha=0.5)
+            # ax.scatter(last_gaze_points[:, 0], last_gaze_points[:, 1], label='original gaze', color='green', alpha=0.5)
+            # ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color=gaze_color_list, alpha=0.5)
             # for pair_index in range(len(src_pts)):
             #     plt.plot([src_pts[pair_index][0], dst_pts[pair_index][0]], [src_pts[pair_index][1], dst_pts[pair_index][1]], color='#DDDDDD', alpha=0.5)
             # plt.show()
 
-    final_unfitness = []
-    for H in population:
-        final_unfitness.append(compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix)[0])
-    best_H = population[np.argmin(final_unfitness)]
-    # 这里的best_H是只有最后一步的H，而不是最好的H。
-    return best_H, min(final_unfitness)
+            last_gaze_points = transformed_gaze_points.copy()
+
+        final_args_list = []
+        unfitness = []
+        for H in population:
+            final_args_list.append((H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
+            # unfitness.append(compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
+
+        unfitness = p.starmap(compute_unfitness_in_generic, args_list)
+        selected_population, sorted_unfitness, unfitness_dist_details, selected_args, structural_dist_list_of_best = select(population, unfitness)
+        best_H = selected_population[0]
+
+        return best_H, sorted_unfitness[0], structural_dist_list_of_best
 
 
 '''--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------'''
@@ -402,7 +538,7 @@ def min_match_with_weighted_dist(gaze_points, std_points_1d, absolute_distance_m
 '''EM SOLUTION'''
 
 
-def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, max_iteration=25):
+def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, log_file=None, max_iteration=50):
     H = np.eye(3)
     cov_init = np.array([[12, 0], [0, 12]]) * 2
     gaussian_std_points = [{'mean': std_points_1d[i], 'cov': cov_init} for i in range(len(std_points_1d))]
@@ -417,49 +553,71 @@ def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
     gaze_para_id_list = df_gaze_data["matrix_x"].tolist()
 
     # structural_distance_matrix不随位置变化而变化，因此只计算一次。
-    structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix) = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
+    structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix), (horizontal_weight_list, vertical_weight_list, first_row_weight_list) \
+        = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
+
+    # 创建根据weight得到的std points的颜色列表。假设存在多篇文章，那么只能呈现其中一篇的结果。
+    para_index_for_color = 0
+    hybrid_weight_list_of_first_para = 0.1 * horizontal_weight_list[para_index_for_color] + 0.01 * vertical_weight_list[para_index_for_color] + 0.09 * first_row_weight_list[para_index_for_color]
+    std_points_color_list = []
+    for std_index in range(len(hybrid_weight_list_of_first_para)):
+        if hybrid_weight_list_of_first_para[std_index] < 0:
+            color = [0.8, 0.8, 0.8]
+        else:
+            max_hybrid_weight_of_first_para = max(hybrid_weight_list_of_first_para)
+            color = [hybrid_weight_list_of_first_para[std_index]/max_hybrid_weight_of_first_para, hybrid_weight_list_of_first_para[std_index]/max_hybrid_weight_of_first_para, 0]
+        std_points_color_list.append(color)
 
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
+        if configs.bool_log:
+            log_file.write("*"*200 + "\n" + f"iteration: {iteration}" + "\n")
+            log_file.flush()
+
         # E-step: Assign each reading to the Gaussian in std under current H with highest PDF.
-        gaze_points = cv2.perspectiveTransform(original_gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2) # TODO 由于每次gaze_point都做了变化，因此对H的约束都是前后两个H之间的约束，而非初始和当前的约束。
+        gaze_points = cv2.perspectiveTransform(original_gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
         absolute_distance_matrix = compute_absolute_distance_matrix(gaze_points, std_points_1d)
         reading_pair_points, std_pair_points = min_match_with_weighted_dist(gaze_points, std_points_1d, absolute_distance_matrix, structural_distance_matrix)
-
         # M-step: Compute the H and update Gaussian parameters based on the assignments.
         # 使用遗传算法来找到最优的H。
-        H, least_unfitness = generic_algorithm_to_find_best_homography(reading_pair_points, std_pair_points, original_gaze_points, std_points_1d, structural_distance_matrix, H)
+        H, least_unfitness, structural_dist_list_of_best = generic_algorithm_to_find_best_homography(reading_pair_points, std_pair_points, original_gaze_points, std_points_1d, structural_distance_matrix, H, gaze_para_id_list, text_mapping, log_file, std_points_color_list)
         transformed_gaze_points = cv2.perspectiveTransform(original_gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
-        print(H, least_unfitness)
-
         bias = analyse_calibration_data.compute_bias_between_cali_centroids_and_std_points(cali_point_1d, std_points_1d, H)
+        print(H, least_unfitness)
         print(f"BIAS: {bias}")
-        fig, ax = plt.subplots(figsize=(24, 18))
-        # fig, ax = plt.subplots(figsize=(12, 10))
+        if configs.bool_log:
+            log_file.write(f"best H: {H}\n"
+                           f"best unfitness: {least_unfitness}\n"
+                           f"BIAS: {bias}\n\n")
+            log_file.flush()
+
+        # visualize data
+        if configs.bool_save_pic:
+            fig, ax = plt.subplots(figsize=(24, 18))
+        else:
+            fig, ax = plt.subplots(figsize=(12, 10))
         ax.set_xlim(0, 1920)
         ax.set_ylim(1200, 0)
         ax.set_aspect("equal")
-        ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
-        ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='gaze gaze', color='green', alpha=0.8)
-        ax.scatter(original_gaze_points[:, 0], original_gaze_points[:, 1], label='original gaze', color='blue', alpha=0.75)
+        ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker='x')
+        ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='gaze gaze', color='green', alpha=0.5)
+        ax.scatter(original_gaze_points[:, 0], original_gaze_points[:, 1], label='original gaze', color='blue', alpha=0.5)
         ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color='red', alpha=0.5)
         for pair_index in range(len(reading_pair_points)):
             plt.plot([reading_pair_points[pair_index][0], std_pair_points[pair_index][0]], [reading_pair_points[pair_index][1], std_pair_points[pair_index][1]], color='#DDDDDD', alpha=0.5)
-        plt.show()
-        # save_path = f"image/match_with_density/{file_name}/test_001/"
-        # if not os.path.exists(save_path):
-        #     os.makedirs(save_path)
-        # plt.savefig(f"{save_path}para_0-4, iter_{iteration}, bias_{bias:.3f}.png")
+        if configs.bool_save_pic:
+            save_path = f"image/match_with_density/{configs.round}/{file_name}/{configs.test_str}/"
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
+            plt.savefig(f"{save_path}para_0-4, iter_{iteration}, bias_{bias:.3f}.png")
+        else:
+            plt.show()
 
+    log_file.close()
 
 def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, max_iteration=100):
     H = np.eye(3)
-    cov_init = np.array([[12, 0], [0, 12]]) * 2
-    gaussian_std_points = [{'mean': std_points_1d[i], 'cov': cov_init} for i in range(len(std_points_1d))]
-
-    df_reading_data_group_by_matrix_x = df_gaze_data.groupby("matrix_x")
     # for matrix_x, df_reading_data_matrix_x in df_reading_data_group_by_matrix_x:
-
     responsibilities = np.zeros((len(std_points_1d), df_gaze_data.shape[0]))
     gaze_x = df_gaze_data["gaze_x"].tolist()
     gaze_y = df_gaze_data["gaze_y"].tolist()
@@ -468,20 +626,32 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
     gaze_para_id_list = df_gaze_data["matrix_x"].tolist()
 
     # structural_distance_matrix不随位置变化而变化，因此只计算一次。
-    structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix) = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
+    structural_distance_matrix, (horizontal_weight_matrix, vertical_weight_matrix, first_row_weight_matrix, structural_weight_matrix), (horizontal_weight_list, vertical_weight_list, first_row_weight_list) \
+        = compute_structural_distance_matrix(gaze_points, std_points_1d, np.array(gaze_density), text_mapping, gaze_para_id_list)
+
+    # 创建根据weight得到的std points的颜色列表。假设存在多篇文章，那么只能呈现其中一篇的结果。
+    para_index_for_color = 0
+    hybrid_weight_list_of_first_para = 0.7 * horizontal_weight_list[para_index_for_color] + 0.01 * vertical_weight_list[para_index_for_color] + 0.49 * first_row_weight_list[para_index_for_color]
+    std_points_color_list = []
+    for std_index in range(len(hybrid_weight_list_of_first_para)):
+        if hybrid_weight_list_of_first_para[std_index] < 0:
+            color = [0.8, 0.8, 0.8]
+        else:
+            max_hybrid_weight_of_first_para = max(hybrid_weight_list_of_first_para)
+            color = [hybrid_weight_list_of_first_para[std_index] / max_hybrid_weight_of_first_para, hybrid_weight_list_of_first_para[std_index] / max_hybrid_weight_of_first_para, 0]
+        std_points_color_list.append(color)
 
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
         # E-step: Assign each reading to the Gaussian in std under current H with highest PDF.
         # gaze_points = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
-        responsibilities = compute_distance(gaze_points, std_points_1d, structural_distance_matrix)
         std_left = 0
         std_right = 1920
         std_top = 0
         std_bottom = 1200
         std_points = np.array([[std_left, std_top], [std_right, std_top], [std_right, std_bottom], [std_left, std_bottom]])
         intput_text = input()
-        input_left_top, input_right_top, input_right_bottom, input_left_bottom = intput_text.split(" ")
+        input_left_top, input_right_top, input_right_bottom, input_left_bottom = intput_text.split(";")
         left_top = [int(input_left_top.split(",")[0]), int(input_left_top.split(",")[1])]
         right_top = [int(input_right_top.split(",")[0]), int(input_right_top.split(",")[1])]
         right_bottom = [int(input_right_bottom.split(",")[0]), int(input_right_bottom.split(",")[1])]
@@ -491,20 +661,27 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
         H, Mask = cv2.findHomography(std_points.reshape(-1, 1, 2), input_points.reshape(-1, 1, 2))
         transformed_gaze_points = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
         print(H)
-        unfitness = compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix)[0]
-        print(unfitness[0])
+        init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list = prepare_first_row_penalty(text_mapping)
+        unfitness = compute_unfitness_in_generic(H, gaze_points, std_points_1d, structural_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list)
+        print(unfitness[0], unfitness[1], unfitness[2])
+
+        structural_dist_list = unfitness[3][1]
+        max_structural_dist = max(structural_dist_list)
+        gaze_color_list = [(structural_dist_list[i] / max_structural_dist, 0, 0) for i in range(len(structural_dist_list))]
 
         bias = analyse_calibration_data.compute_bias_between_cali_centroids_and_std_points(cali_point_1d, std_points_1d, H)
         print(f"BIAS: {bias}")
-        # fig, ax = plt.subplots(figsize=(24, 18))
-        fig, ax = plt.subplots(figsize=(12, 10))
+        fig, ax = plt.subplots(figsize=(16, 12))
+        # fig, ax = plt.subplots(figsize=(12, 10))
         ax.set_xlim(0, 1920)
         ax.set_ylim(1200, 0)
         ax.set_aspect("equal")
-        ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
-        ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='green', alpha=0.8)
-        ax.scatter(original_gaze_points[:, 0], original_gaze_points[:, 1], label='original gaze', color='blue', alpha=0.75)
-        ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color='red', alpha=0.5)
+        check_start = 0
+        check_end = None
+        ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker="x")
+        ax.scatter(gaze_points[check_start:check_end, 0], gaze_points[check_start:check_end, 1], label='original gaze', color='green', alpha=0.5)
+        ax.scatter(original_gaze_points[check_start:check_end, 0], original_gaze_points[check_start:check_end, 1], label='original gaze', color='blue', alpha=0.5)
+        ax.scatter(transformed_gaze_points[check_start:check_end, 0], transformed_gaze_points[check_start:check_end, 1], label='transformed gaze', color=gaze_color_list[check_start:check_end], alpha=0.5)
         plt.show()
 
 
@@ -566,7 +743,7 @@ def match_with_density():
         combined_reading_data_list.append(reading_data_sorted_combined)
 
     # 截取部分reading data作为训练集。
-    training_data_num_list = [0, 1, 2, 3, 4] # FIXME 选择需要的训练数据。
+    training_data_num_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] # FIXME 选择需要的训练数据。
 
     # 截取部分text_mapping作为训练集。
     training_text_mapping = []
@@ -605,16 +782,19 @@ def match_with_density():
         gaze_density_list.append(density_list)
 
     # 根据labels，挑选出需要的training_reading和gaze_density。去掉那些label为-2, -1, 3的样本点。
-    for file_index in range(len(training_reading_data)):
-        combined_labels = np.concatenate(training_reading_labels[file_index])
-        drop_rows = []
-        for gaze_index in range(len(combined_labels)):
-            if combined_labels[gaze_index] == -1 or combined_labels[gaze_index] == -2 or combined_labels[gaze_index] == 3:
-                drop_rows.append(gaze_index)
-        drop_rows = np.array(drop_rows)
-        training_reading_data[file_index] = training_reading_data[file_index].drop(drop_rows)
-        training_reading_data[file_index].reset_index(inplace=True, drop=True)
-        gaze_density_list[file_index] = np.delete(np.array(gaze_density_list[file_index]), drop_rows)
+    # for file_index in range(len(training_reading_data)):
+    #     combined_labels = np.concatenate(training_reading_labels[file_index])
+    #     drop_rows = []
+    #     for gaze_index in range(len(combined_labels)):
+    #         if combined_labels[gaze_index] == -1 or combined_labels[gaze_index] == -2 or combined_labels[gaze_index] == 3:
+    #             drop_rows.append(gaze_index)
+    #     drop_rows = np.array(drop_rows)
+    #     if len(drop_rows) > 0:
+    #         training_reading_data[file_index] = training_reading_data[file_index].reset_index().drop(drop_rows)
+    #         training_reading_data[file_index].reset_index(inplace=True, drop=True)
+    #         gaze_density_list[file_index] = np.delete(np.array(gaze_density_list[file_index]), drop_rows)
+    #     else:
+    #         training_reading_data[file_index].reset_index(inplace=True, drop=True)
 
     # 找到每个样本的外包矩形，对齐两个矩形的左上角，然后将reading数据平移。然后通过x_min和y_min计算相对位置。 # FIXME 感觉这里似乎没什么用处了。
     # for file_index in range(len(training_reading_data)):
@@ -712,8 +892,18 @@ def match_with_density():
     file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
     file_name_list = os.listdir(file_path)
 
-    for file_index in range(len(training_reading_data)):
-    # for file_index in range(1):
-        em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
+    # for file_index in range(len(training_reading_data)):
+    for file_index in range(2, 3):
+        log_path = f"output/alignment/{configs.round}/{configs.device}/{file_name_list[file_index]}/"
+        if not os.path.exists(log_path):
+            os.makedirs(os.path.dirname(log_path))
+
+        log_file_name = f"{configs.test_str}.txt"
+        if configs.bool_log:
+            with open(f"{log_path}{log_file_name}", "w") as log_file:
+                em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index], log_file)
+        else:
+            em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
+            pass
         # manual_test(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
 

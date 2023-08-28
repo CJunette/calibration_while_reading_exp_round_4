@@ -3,8 +3,6 @@ import os
 import re
 import time
 from multiprocessing import Pool
-
-import PyQt5.QtCore
 import pandas as pd
 from hanlp_restful import HanLPClient
 from matplotlib import pyplot as plt, patches
