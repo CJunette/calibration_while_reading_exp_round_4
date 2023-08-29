@@ -719,7 +719,7 @@ def compute_to_edge_weight():
         args = (para_id, fine_token_list, df_text_mapping, df_text_mapping_para_id, left_right_bound, up_down_bound)
         args_list.append(args)
 
-    with Pool(16) as p:
+    with Pool(configs.num_of_processes) as p:
         results = p.starmap(compute_distance_to_edge_single_pool, args_list)
 
     for para_index in range(len(results)):

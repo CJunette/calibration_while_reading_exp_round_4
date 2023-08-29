@@ -82,7 +82,7 @@ def render_point_density_hist():
             for gaze_index in range(reading_df.shape[0]):
                 args_list.append((reading_df, gaze_index))
 
-        with Pool(16) as p:
+        with Pool(configs.num_of_processes) as p:
             density_list = p.starmap(get_point_density_single_pool, args_list)
 
         # with open(f"temp.txt", "a") as f:

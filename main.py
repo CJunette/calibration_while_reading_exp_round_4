@@ -60,9 +60,9 @@ if __name__ == '__main__':
     # talk_with_GPT.test_gpt_fine_tune_prediction()
     # talk_with_GPT.get_gpt_prediction("coarse")
 
-    get_weight_of_text("8_28_coarse_test_from_gpt_0-108.csv") # 用于获取text_unit的的结构weight和gpt语义weight。
+    # get_weight_of_text("8_28_coarse_test_from_gpt_0-108.csv") # 用于获取text_unit的的结构weight和gpt语义weight。
 
 
     # test_pull_gaze_trace.pull_test()
-    # test_match_with_density.match_with_density()
+    test_match_with_density.match_with_density()
 

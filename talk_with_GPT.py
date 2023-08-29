@@ -71,7 +71,7 @@ def create_df_statistic(df_list):
     for token_index in range(df_statistic.shape[0]):
         args = [token_index, df_list]
         args_list.append(args)
-    with Pool(16) as p:
+    with Pool(configs.num_of_processes) as p:
         results = p.starmap(create_df_statistic_single_pool, args_list)
     for token_index in range(df_statistic.shape[0]):
         df_statistic.at[token_index, "density"] = results[token_index][0]
@@ -621,7 +621,7 @@ def prepare_text_for_fine_tune(df, bool_training=False):
                 continue
         for token_index in range(df_para_id.shape[0]):
             args_list.append([para_id, token_index, sorted_text, df_para_id])
-    with Pool(16) as p:
+    with Pool(configs.num_of_processes) as p:
         result = p.starmap(prepare_text_for_fine_tune_single_pool, args_list)
 
     for result_index in range(len(result)):
@@ -757,7 +757,7 @@ def save_gpt_fine_tune_prediction(token_type, save_file_index=None):
         args_list.append((test_data_list, validation_data_list, test_data_index))
         test_data_index += 1
 
-    with Pool(16) as p:
+    with Pool(configs.num_of_processes) as p:
         result_list = p.starmap(get_fine_tune_prediction, args_list)
 
     for result_index in range(len(result_list)):

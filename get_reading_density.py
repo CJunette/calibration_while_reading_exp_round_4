@@ -60,7 +60,7 @@ def get_text_unit_density():
                 args = [text_mapping_list, file_index, matrix_x, df_reading_matrix_x]
                 args_list.append(args)
 
-        with Pool(16) as p:
+        with Pool(configs.num_of_processes) as p:
             text_mapping_result = p.starmap(get_text_unit_density_single_pool, args_list)
 
     # for file_index in range(len(df_reading_list)):
@@ -165,7 +165,7 @@ def get_token_density():
     df_coarse_token_list = read_files.read_all_token_data("coarse")
     coarse_args_list = create_args_list(df_coarse_token_list, df_text_density_list)
 
-    with Pool(16) as p:
+    with Pool(configs.num_of_processes) as p:
         fine_token_density_result = p.starmap(get_token_density_single_pool, fine_args_list)
         coarse_token_density_result = p.starmap(get_token_density_single_pool, coarse_args_list)
 
