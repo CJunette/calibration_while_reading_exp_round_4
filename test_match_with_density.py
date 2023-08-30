@@ -325,14 +325,14 @@ def compute_homography_penalty(H):
     perspective_y = H_normalized[2, 1]
 
     penalty = 0
-    if abs(theta) > 5:
+    if abs(theta) > 10:
         penalty += configs.H_rotation_penalty
         # print(f"rotation penalty, theta: {theta}")
-    if (not 0.85 <= scale_x <= 1.15) or (not 0.9 <= scale_y <= 1.1):
+    if (not 0.85 <= scale_x <= 1.6) or (not 0.9 <= scale_y <= 1.1):
     # if (not 0.7 <= scale_x <= 1.3) or (not 0.7 <= scale_y <= 1.3):
         penalty += configs.H_scale_penalty
         # print(f"scale penalty, scale_x: {scale_x}, scale_y: {scale_y}")
-    if abs(shear_x) > 0.06 or abs(shear_y) > 0.06:
+    if abs(shear_x) > 0.09 or abs(shear_y) > 0.09:
         penalty += configs.H_shear_penalty
         # print(f"shear penalty, shear_x: {shear_x}, shear_y: {shear_y}")
     if abs(perspective_x) > 0.002 or abs(perspective_y) > 0.002:
@@ -548,7 +548,7 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
         for generation in range(generations):
             print(f"generation: {generation}")
             if configs.bool_log:
-                log_file.write("-" * 100 + "\n" + f"generation: {generation}" + "\n")
+                log_file.write("-" * 100 + "\n" + f"generation: {generation}\ntime:{time.time()}\n")
 
             args_list = []
             unfitness = []
@@ -584,23 +584,23 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
             population = selected_population + new_population
 
             # visualize result.
-            if not configs.bool_log and not configs.bool_save_pic:
-                max_semantic_dist = max(semantic_dist_list_of_best)
-                gaze_color_list = [(semantic_dist_list_of_best[i] / max_semantic_dist, 0, 0) for i in range(len(semantic_dist_list_of_best))]
-                fig, ax = plt.subplots(figsize=(12, 8))
-                ax.set_xlim(0, 1920)
-                ax.set_ylim(1200, 0)
-                ax.set_aspect("equal")
-                if std_points_color_list is not None:
-                    ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker="x")
-                else:
-                    ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
-                ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='blue', alpha=0.5)
-                ax.scatter(last_gaze_points[:, 0], last_gaze_points[:, 1], label='original gaze', color='green', alpha=0.5)
-                ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color=gaze_color_list, alpha=0.5)
-                for pair_index in range(len(src_pts)):
-                    plt.plot([src_pts[pair_index][0], dst_pts[pair_index][0]], [src_pts[pair_index][1], dst_pts[pair_index][1]], color='#DDDDDD', alpha=0.5)
-                plt.show()
+            # if not configs.bool_log and not configs.bool_save_pic:
+            #     max_semantic_dist = max(semantic_dist_list_of_best)
+            #     gaze_color_list = [(semantic_dist_list_of_best[i] / max_semantic_dist, 0, 0) for i in range(len(semantic_dist_list_of_best))]
+            #     fig, ax = plt.subplots(figsize=(12, 8))
+            #     ax.set_xlim(0, 1920)
+            #     ax.set_ylim(1200, 0)
+            #     ax.set_aspect("equal")
+            #     if std_points_color_list is not None:
+            #         ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker="x")
+            #     else:
+            #         ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
+            #     ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='blue', alpha=0.5)
+            #     ax.scatter(last_gaze_points[:, 0], last_gaze_points[:, 1], label='original gaze', color='green', alpha=0.5)
+            #     ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color=gaze_color_list, alpha=0.5)
+            #     for pair_index in range(len(src_pts)):
+            #         plt.plot([src_pts[pair_index][0], dst_pts[pair_index][0]], [src_pts[pair_index][1], dst_pts[pair_index][1]], color='#DDDDDD', alpha=0.5)
+            #     plt.show()
 
             last_gaze_points = transformed_gaze_points.copy()
 
@@ -738,7 +738,7 @@ def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
         if configs.bool_log:
-            log_file.write("*"*200 + "\n" + f"iteration: {iteration}" + "\n")
+            log_file.write("*"*200 + "\n" + f"iteration: {iteration}\ntime: {time.time()}\n")
 
         # E-step: Assign each reading to the Gaussian in std under current H with the highest PDF.
         gaze_points = cv2.perspectiveTransform(original_gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
@@ -756,6 +756,10 @@ def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
                            f"best unfitness: {least_unfitness}\n"
                            f"BIAS: {bias}\n\n")
             log_file.flush()
+
+        # init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list = prepare_first_row_penalty(text_mapping)
+        # unfitness = compute_unfitness_in_generic(H, gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set,
+        #                                              text_unit_num_list)
 
         # visualize data
         if configs.bool_save_pic:
@@ -810,7 +814,7 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
 
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
-        # E-step: Assign each reading to the Gaussian in std under current H with highest PDF.
+        # E-step: Assign each reading to the Gaussian in std under current H with the highest PDF.
         std_left = 0
         std_right = 1920
         std_top = 0
@@ -836,7 +840,6 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
         print(unfitness[0], unfitness[1], unfitness[2])
 
         target_dist_list = unfitness[3][1]
-        target_dist_list.sort(reverse=True)
         max_semantic_dist = max(target_dist_list)
         target_dist_list = np.array(target_dist_list)
         gaze_color_list = [(target_dist_list[i] / max_semantic_dist, 0, 0) for i in range(len(target_dist_list))]
@@ -911,7 +914,7 @@ def match_with_density():
         combined_reading_data_list.append(reading_data_sorted_combined)
 
     # 截取部分reading data作为训练集。
-    training_data_num_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] # FIXME 选择需要的训练数据。
+    training_data_num_list = configs.training_number_list
 
     # 截取部分text_mapping作为训练集。
     training_text_mapping = []
@@ -966,19 +969,27 @@ def match_with_density():
 
     file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
     file_name_list = os.listdir(file_path)
-
-    for file_index in range(len(training_reading_data)):
-    # for file_index in range(7, 8):
-        log_path = f"output/alignment/{configs.round}/{configs.device}/{file_name_list[file_index]}/"
-        if not os.path.exists(log_path):
-            os.makedirs(os.path.dirname(log_path))
-
-        log_file_name = f"{configs.test_str}.txt"
-        if configs.bool_log:
-            with open(f"{log_path}{log_file_name}", "w") as log_file:
-                em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index], log_file)
-        else:
-            em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
-            pass
-        # manual_test(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
+    file_name_list.sort()
+    # for file_index in range(len(training_reading_data)):
+    for file_index in range(2, 3):
+        # log_path = f"output/alignment/{configs.round}/{configs.device}/{file_name_list[file_index]}/"
+        # if not os.path.exists(log_path):
+        #     os.makedirs(os.path.dirname(log_path))
+        # log_file_name = f"{configs.test_str}.txt"
+        # if configs.bool_log:
+        #     with open(f"{log_path}{log_file_name}", "w") as log_file:
+        #         log_file.write(f"time: {time.time()}\n"
+        #                        f"coeff_gpt_for_non_structural: {configs.coeff_gpt_for_non_structural}\n"
+        #                        f"coeff_gpt: {configs.coeff_gpt}\n"
+        #                        f"coeff_structural: {configs.coeff_structural}\n"
+        #                        f"empty_text_unit_penalty: {configs.empty_text_unit_penalty}\n"
+        #                        f"punctuation_text_unit_penalty: {configs.punctuation_text_unit_penalty}\n"
+        #                        f"far_from_text_unit_penalty: {configs.far_from_text_unit_penalty}\n"
+        #                        f"dist_threshold_from_std: {configs.dist_threshold_from_std}\n"
+        #                        f"first_row_text_penalty: {configs.first_row_text_penalty}\n\n")
+        #         em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index], log_file)
+        # else:
+        #     em_solution(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
+        #     pass
+        manual_test(std_points_1d, training_reading_data[file_index], gaze_density_list[file_index], training_text_mapping[file_index], cali_centroid_list[file_index], file_name_list[file_index])
 
