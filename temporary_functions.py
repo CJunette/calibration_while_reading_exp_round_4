@@ -1,4 +1,6 @@
 import json
+
+import cv2
 import math
 import os
 from multiprocessing import Pool
@@ -500,3 +502,86 @@ def change_punctuation_weight(weight_file_name):
     weight_df["weight"] = weight_list
 
     weight_df.to_csv(f"{weight_file_prefix}{weight_file_name}", encoding="utf-8_sig", index=False)
+
+
+def output_bias_log(test_str):
+    file_path = f"output/alignment/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path)
+    for file_index in range(len(file_list)):
+        target_file_path = f"{file_path}{file_list[file_index]}/{test_str}.txt"
+        # print(file_list[file_index])
+        with open(f"{target_file_path}", "r", encoding="utf-8_sig") as f:
+            lines = f.readlines()
+            bias_lines = []
+            for line_index in range(len(lines)):
+                if "BIAS" in lines[line_index]:
+                    bias_lines.append(float(lines[line_index].split("BIAS: ")[1]))
+            for bias_index in range(len(bias_lines)):
+                print(bias_lines[bias_index], end="\t")
+            f.close()
+            print()
+
+
+def retrieve_best_H_rectangle_features():
+    def compute_radius_between_vectors(vector_1, vector_2):
+        dot_product = np.dot(vector_1, vector_2)
+        norm_1 = np.linalg.norm(vector_1)
+        norm_2 = np.linalg.norm(vector_2)
+        cos_theta = dot_product / (norm_1 * norm_2)
+        theta_radians = np.arccos(cos_theta)
+        theta_angle = np.degrees(theta_radians)
+        return theta_angle
+
+    file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path)
+
+    str_list = []
+
+    for file_index in range(len(file_list)):
+        file_name = f"{file_path}{file_list[file_index]}/calibration.csv"
+
+        df_cali = pd.read_csv(file_name)
+        centroid_list = analyse_calibration_data.compute_centroids(df_cali)
+        list_std_cali = analyse_calibration_data.create_standard_calibration_points()
+        H, centroid_list_after_homography = analyse_calibration_data.apply_homography_transform(centroid_list, list_std_cali)
+
+        points1 = np.array([[0, 0], [1920, 0], [1920, 1200], [0, 1200]], dtype=np.float32)
+        points2 = cv2.perspectiveTransform(points1.reshape(-1, 1, 2), H).reshape(-1, 2)
+
+        space_1 = cv2.contourArea(points1)
+        space_2 = cv2.contourArea(points2)
+        space_ratio = space_2 / space_1
+
+        scale_up = np.linalg.norm(points2[0] - points2[1]) / np.linalg.norm(points1[0]-points1[1])
+        scale_down = np.linalg.norm(points2[3] - points2[2]) / np.linalg.norm(points1[3] - points1[2])
+        scale_left = np.linalg.norm(points2[3] - points2[0]) / np.linalg.norm(points1[3] - points2[0])
+        scale_right = np.linalg.norm(points2[2] - points2[1]) / np.linalg.norm(points1[2] - points1[1])
+
+        transform_distance = np.linalg.norm(points1[0] - points2[0]) + np.linalg.norm(points1[1] - points2[1]) + np.linalg.norm(points1[2] - points2[2]) + np.linalg.norm(points1[3] - points2[3])
+
+        angle_left_up_2 = compute_radius_between_vectors(points2[3] - points2[0], points2[1] - points2[0])
+        angle_left_down_2 = compute_radius_between_vectors(points2[0] - points2[3], points2[2] - points2[3])
+        angle_right_up_2 = compute_radius_between_vectors(points2[2] - points2[1], points2[0] - points2[1])
+        angle_right_down_2 = compute_radius_between_vectors(points2[1] - points2[2], points2[3] - points2[2])
+
+        angle_left_up_1 = compute_radius_between_vectors(points1[3] - points1[0], points1[1] - points1[0])
+        angle_left_down_1 = compute_radius_between_vectors(points1[0] - points1[3], points1[2] - points1[3])
+        angle_right_up_1 = compute_radius_between_vectors(points1[2] - points1[1], points1[0] - points1[1])
+        angle_right_down_1 = compute_radius_between_vectors(points1[1] - points1[2], points1[3] - points1[2])
+
+        angle_left_up_ratio = angle_left_up_2 / angle_left_up_1
+        angle_left_down_ratio = angle_left_down_2 / angle_left_down_1
+        angle_right_up_ratio = angle_right_up_2 / angle_right_up_1
+        angle_right_down_ratio = angle_right_down_2 / angle_right_down_1
+
+        cv2ms = cv2.matchShapes(points1.reshape(-1, 1, 2), points2.reshape(-1, 1, 2), 1, 0.0)
+
+        str_list.append(
+            f"name: {file_list[file_index]}\n"
+            f"H: {H}\n"
+            f"space_ratio: {space_ratio:.5f}, transform_distance: {transform_distance:.5f}, cv2ms: {cv2ms:.5f}, "
+            f"scale_up: {scale_up: .5f}, scale_down: {scale_down: .5f}, scale_left: {scale_left: .5f}, scale_right: {scale_right: .5f}, "
+            f"angle_left_up_ratio: {angle_left_up_ratio:.5f}, angle_left_down_ratio: {angle_left_down_ratio:.5f}, angle_right_up_ratio: {angle_right_up_ratio:.5f}, angle_right_down_ratio: {angle_right_down_ratio:.5f}")
+
+    for feature_str in str_list:
+        print(feature_str)
