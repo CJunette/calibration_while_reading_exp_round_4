@@ -32,9 +32,10 @@ temp_token_debug_num = 23
 punctuation_list = {'\'', '\"', '!', '?', '.', '/', '\\', '-', '，', ':', '：', '。', '……', '！', '？', '——', '（', '）', '【', '】', '“', '”', '’', '‘', '：', '；', '《', '》', '、', '—', '～', '·', '「', '」', '『', '』'}
 
 # 空间对齐相关。
-bool_log = True
-bool_save_pic = True
-test_str = "test_010"
+training_number_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] # FIXME 选择需要的训练数据。
+bool_log = False
+bool_save_pic = False
+test_str = "test_014"
 empty_text_unit_penalty = -40
 punctuation_text_unit_penalty = -20
 far_from_text_unit_penalty = 180
@@ -46,11 +47,10 @@ H_projection_penalty = 500
 H_space_ratio_penalty = 1000
 text_unit_density_threshold_for_empty = 6
 first_row_text_penalty = 5
-coeff_gpt_for_non_structural = 1
+coeff_gpt_for_non_structural = 0
 coeff_gpt = 0.0001
 coeff_structural = 0.9999
 generic_population_size = 500
 generic_population_generation = 3
 em_iteration = 15
-
 
