@@ -267,7 +267,7 @@ def add_all_reading(weight_file_name):
 
     text_unit_density_list = read_files.read_text_unit_density()
     manual_density_file_path = f"data/text/{configs.round}/weight/{weight_file_name}"
-    df_manual_density = pd.read_csv(manual_density_file_path, encoding="utf-8_sig", index_col=False)
+    # df_manual_density = pd.read_csv(manual_density_file_path, encoding="utf-8_sig", index_col=False)
 
     for para_index in range(len(para_candidate_list)):
         df_list = []

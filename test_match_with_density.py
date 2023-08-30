@@ -1,3 +1,5 @@
+import concurrent.futures
+
 import math
 import os
 import random
@@ -234,15 +236,15 @@ def compute_semantic_distance_matrix(gaze_data, std_data, gaze_density, text_map
         elif coeff_gpt == 0 and coeff_structural == 0:
             return np.zeros(structural_distance_matrix.shape)
         else:
-            combined_weight_matrix = np.array([[0 for _ in range(len(gaze_data))] for _ in range(len(std_data))])
+            combined_distance_matrix = np.array([[0 for _ in range(len(gaze_data))] for _ in range(len(std_data))])
             for std_index in range(len(std_data)):
                 for gaze_index in range(len(gaze_data)):
                     # 对于那些没有structural_weight的text_unit，直接使用gpt_weight。
                     if structural_weight_matrix[std_index, gaze_index] == 0:
-                        combined_weight_matrix[std_index, gaze_index] = gpt_distance_matrix[std_index, gaze_index] * coeff_gpt_for_non_structural
+                        combined_distance_matrix[std_index, gaze_index] = gpt_distance_matrix[std_index, gaze_index] * coeff_gpt_for_non_structural
                     else:
-                        combined_weight_matrix[std_index, gaze_index] = gpt_distance_matrix[std_index, gaze_index] * coeff_gpt + structural_distance_matrix[std_index, gaze_index] * coeff_structural
-            return combined_weight_matrix
+                        combined_distance_matrix[std_index, gaze_index] = gpt_distance_matrix[std_index, gaze_index] * coeff_gpt + structural_distance_matrix[std_index, gaze_index] * coeff_structural
+            return combined_distance_matrix
 
     # 首先根据不同的para_id，把weight分配好。
     para_id_list = text_mapping_with_weight["para_id"].unique()
@@ -327,6 +329,7 @@ def compute_homography_penalty(H):
         penalty += configs.H_rotation_penalty
         # print(f"rotation penalty, theta: {theta}")
     if (not 0.85 <= scale_x <= 1.15) or (not 0.9 <= scale_y <= 1.1):
+    # if (not 0.7 <= scale_x <= 1.3) or (not 0.7 <= scale_y <= 1.3):
         penalty += configs.H_scale_penalty
         # print(f"scale penalty, scale_x: {scale_x}, scale_y: {scale_y}")
     if abs(shear_x) > 0.06 or abs(shear_y) > 0.06:
@@ -341,10 +344,10 @@ def compute_homography_penalty(H):
     space_1 = cv2.contourArea(rect_1)
     space_2 = cv2.contourArea(rect_2)
     space_ratio = space_2 / space_1
-    if not 0.9 < space_ratio < 1.1:
+    if not 0.9 < space_ratio < 1.2:
         penalty += configs.H_space_ratio_penalty
 
-    return penalty, theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y
+    return penalty, theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y, space_ratio
 
 
 def compute_first_row_penalty(init_first_row_penalty_copy, text_unit_num_list):
@@ -397,10 +400,10 @@ def compute_unfitness_in_generic(H, gaze_points, std_points_1d, semantic_distanc
     # dist_from_hybrid指每个gaze点到最近的std点的物理距离与结构距离之和。
     dist_from_hybrid = np.mean(hybrid_dist_list)
     dist_from_absolute = np.mean(absolute_dist_list)
-    dist_from_structure = np.mean(semantic_dist_list)
+    dist_from_semantic = np.mean(semantic_dist_list)
 
     # dist_from_H指H过大的变化量带来的惩罚。
-    dist_from_H, theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y = compute_homography_penalty(H)
+    dist_from_H, theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y, space_ratio = compute_homography_penalty(H)
     # dist_from_H = 0
     # print(dist_from_hybrid, dist_from_H, space_ratio)
 
@@ -409,7 +412,7 @@ def compute_unfitness_in_generic(H, gaze_points, std_points_1d, semantic_distanc
 
     total_dist = dist_from_hybrid + dist_from_H + dist_from_fist_row
 
-    return total_dist, (dist_from_hybrid, dist_from_absolute, dist_from_structure, dist_from_H, dist_from_fist_row), (theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y), (absolute_dist_list, semantic_dist_list, hybrid_dist_list)
+    return total_dist, (dist_from_hybrid, dist_from_absolute, dist_from_semantic, dist_from_H, dist_from_fist_row), (theta, scale_x, scale_y, shear_x, shear_y, perspective_x, perspective_y, space_ratio), (absolute_dist_list, semantic_dist_list, hybrid_dist_list)
 
 
 def prepare_first_row_penalty(text_mapping):
@@ -459,7 +462,7 @@ def prepare_first_row_penalty(text_mapping):
     return penalty_list_1, std_index_list_1, text_unit_num_list_1
 
 
-def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std_points_1d, semantic_distance_matrix, H_init, gaze_para_id_list, text_mapping, log_file, std_points_color_list=None, population_size=500, generations=5):
+def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std_points_1d, semantic_distance_matrix, H_init, gaze_para_id_list, text_mapping, log_file, std_points_color_list=None, population_size=configs.generic_population_size, generations=configs.generic_population_generation):
     '''
     :param src_pts: 来自gaze的匹配点。
     :param dst_pts: 来自标准校准点的匹配点。
@@ -512,10 +515,25 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
             if H is not None and not np.isnan(H).any() and not np.isinf(H).any():
                 population.append(H)
         while len(population) < population_size:
-            random_matrix = np.array([
-                [np.random.uniform(-0.2, 0.2) + 1, 0, np.random.uniform(-configs.text_width * 2, configs.text_width * 2)],
-                [0, np.random.uniform(-0.2, 0.2) + 1, np.random.uniform(-configs.text_height * 2, configs.text_height * 2)],
+            # 添加一批随机矩阵。
+            random_scale_matrix = np.array([
+                [np.random.uniform(0.85, 1.15), 0, 0],
+                [0, np.random.uniform(0.85, 1.15), 0],
                 [0, 0, 1]])
+            random_theta = np.radians(np.random.uniform(-5, 5))
+            random_rotation_matrix = np.array([
+                [np.cos(random_theta), -np.sin(random_theta), 0],
+                [np.sin(random_theta), np.cos(random_theta), 0],
+                [0, 0, 1]])
+            random_transform_matrix = np.array([
+                [1, 0, np.random.uniform(-configs.text_width * 2, configs.text_width * 2)],
+                [0, 1, np.random.uniform(-configs.text_width * 2, configs.text_width * 2)],
+                [0, 0, 1]])
+            random_matrix = np.dot(random_transform_matrix, np.dot(random_rotation_matrix, random_scale_matrix))
+            # random_matrix = np.array([
+            #     [np.random.uniform(-0.2, 0.2) + 1, 0, np.random.uniform(-configs.text_width * 2, configs.text_width * 2)],
+            #     [0, np.random.uniform(-0.2, 0.2) + 1, np.random.uniform(-configs.text_height * 2, configs.text_height * 2)],
+            #     [0, 0, 1]])
             population.append(random_matrix)
         return population
 
@@ -524,6 +542,7 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
     # 为first_row_penalty做准备。
     init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list = prepare_first_row_penalty(text_mapping)
     with Pool(configs.num_of_processes) as p:
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
         last_gaze_points = gaze_points.copy()
 
         for generation in range(generations):
@@ -537,6 +556,7 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
                 args_list.append((H, gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
                 # unfitness.append(compute_unfitness_in_generic(H, gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
             unfitness = p.starmap(compute_unfitness_in_generic, args_list)
+            # unfitness = executor.map(compute_unfitness_in_generic, *zip(*args_list))
             selected_population, sorted_unfitness, unfitness_dist_details, selected_args, semantic_dist_list_of_best = select(population, unfitness)
             best_H = selected_population[0]
             print(f"best H: {selected_population[0]}, best unfitness: {sorted_unfitness[0]}, best args: {selected_args[0]}\n"
@@ -563,23 +583,24 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
                     new_population[i] = mutate(new_population[i])
             population = selected_population + new_population
 
-            # # visualize result.
-            # max_semantic_dist = max(semantic_dist_list_of_best)
-            # gaze_color_list = [(semantic_dist_list_of_best[i] / max_semantic_dist, 0, 0) for i in range(len(semantic_dist_list_of_best))]
-            # fig, ax = plt.subplots(figsize=(12, 8))
-            # ax.set_xlim(0, 1920)
-            # ax.set_ylim(1200, 0)
-            # ax.set_aspect("equal")
-            # if std_points_color_list is not None:
-            #     ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker="x")
-            # else:
-            #     ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
-            # ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='blue', alpha=0.5)
-            # ax.scatter(last_gaze_points[:, 0], last_gaze_points[:, 1], label='original gaze', color='green', alpha=0.5)
-            # ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color=gaze_color_list, alpha=0.5)
-            # for pair_index in range(len(src_pts)):
-            #     plt.plot([src_pts[pair_index][0], dst_pts[pair_index][0]], [src_pts[pair_index][1], dst_pts[pair_index][1]], color='#DDDDDD', alpha=0.5)
-            # plt.show()
+            # visualize result.
+            if not configs.bool_log and not configs.bool_save_pic:
+                max_semantic_dist = max(semantic_dist_list_of_best)
+                gaze_color_list = [(semantic_dist_list_of_best[i] / max_semantic_dist, 0, 0) for i in range(len(semantic_dist_list_of_best))]
+                fig, ax = plt.subplots(figsize=(12, 8))
+                ax.set_xlim(0, 1920)
+                ax.set_ylim(1200, 0)
+                ax.set_aspect("equal")
+                if std_points_color_list is not None:
+                    ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color=std_points_color_list, marker="x")
+                else:
+                    ax.scatter(std_points_1d[:, 0], std_points_1d[:, 1], label='std point', color='black')
+                ax.scatter(gaze_points[:, 0], gaze_points[:, 1], label='original gaze', color='blue', alpha=0.5)
+                ax.scatter(last_gaze_points[:, 0], last_gaze_points[:, 1], label='original gaze', color='green', alpha=0.5)
+                ax.scatter(transformed_gaze_points[:, 0], transformed_gaze_points[:, 1], label='transformed gaze', color=gaze_color_list, alpha=0.5)
+                for pair_index in range(len(src_pts)):
+                    plt.plot([src_pts[pair_index][0], dst_pts[pair_index][0]], [src_pts[pair_index][1], dst_pts[pair_index][1]], color='#DDDDDD', alpha=0.5)
+                plt.show()
 
             last_gaze_points = transformed_gaze_points.copy()
 
@@ -589,9 +610,12 @@ def generic_algorithm_to_find_best_homography(src_pts, dst_pts, gaze_points, std
             final_args_list.append((H, gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
             # unfitness.append(compute_unfitness_in_generic(H, gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list))
 
-        unfitness = p.starmap(compute_unfitness_in_generic, args_list)
+        unfitness = p.starmap(compute_unfitness_in_generic, final_args_list)
         selected_population, sorted_unfitness, unfitness_dist_details, selected_args, semantic_dist_list_of_best = select(population, unfitness)
         best_H = selected_population[0]
+
+        print(f"final best H: {selected_population[0]}, final best unfitness: {sorted_unfitness[0]}, final best args: {selected_args[0]}\n"
+              f"final best unfitness_detail: {unfitness_dist_details[0]}")
 
         return best_H, sorted_unfitness[0], semantic_dist_list_of_best
 
@@ -677,7 +701,7 @@ def min_match_with_weighted_dist(gaze_points, std_points_1d, absolute_distance_m
 '''EM SOLUTION'''
 
 
-def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, log_file=None, max_iteration=15):
+def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_point_1d, file_name, log_file=None, max_iteration=configs.em_iteration):
     H = np.eye(3)
     cov_init = np.array([[12, 0], [0, 12]]) * 2
     gaussian_std_points = [{'mean': std_points_1d[i], 'cov': cov_init} for i in range(len(std_points_1d))]
@@ -754,6 +778,7 @@ def em_solution(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
             plt.savefig(f"{save_path}para_0-4, iter_{iteration}, bias_{bias:.3f}.png")
         else:
             plt.show()
+            pass
 
     log_file.close()
 
@@ -786,7 +811,6 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
     for iteration in range(max_iteration):
         print(f"iteration: {iteration}")
         # E-step: Assign each reading to the Gaussian in std under current H with highest PDF.
-        # gaze_points = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
         std_left = 0
         std_right = 1920
         std_top = 0
@@ -801,10 +825,14 @@ def manual_test(std_points_1d, df_gaze_data, gaze_density, text_mapping, cali_po
         input_points = np.array([left_top, right_top, right_bottom, left_bottom])
 
         H, Mask = cv2.findHomography(std_points.reshape(-1, 1, 2), input_points.reshape(-1, 1, 2))
-        transformed_gaze_points = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
+
+        # H = np.array([[0.95343164, -0.05380535, -15.43129265],
+        #               [0.04673075, 1.09777226, -25.2820762],
+        #               [0., 0., 1.]])
         print(H)
+        transformed_gaze_points = cv2.perspectiveTransform(gaze_points.reshape(-1, 1, 2), H).reshape(-1, 2)
         init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list = prepare_first_row_penalty(text_mapping)
-        unfitness = compute_unfitness_in_generic(H, transformed_gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list)
+        unfitness = compute_unfitness_in_generic(H, gaze_points, std_points_1d, semantic_distance_matrix, gaze_para_id_list, init_first_row_penalty_list, init_first_row_std_index_set, text_unit_num_list)
         print(unfitness[0], unfitness[1], unfitness[2])
 
         target_dist_list = unfitness[3][1]
@@ -940,7 +968,7 @@ def match_with_density():
     file_name_list = os.listdir(file_path)
 
     for file_index in range(len(training_reading_data)):
-    # for file_index in range(5, 6):
+    # for file_index in range(7, 8):
         log_path = f"output/alignment/{configs.round}/{configs.device}/{file_name_list[file_index]}/"
         if not os.path.exists(log_path):
             os.makedirs(os.path.dirname(log_path))
