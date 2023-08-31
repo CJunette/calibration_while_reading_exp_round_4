@@ -45,13 +45,15 @@ if __name__ == '__main__':
     # temporary_functions.read_article_category() # 将刚才的分类结果导入，并用gpt对这些文本类型进行分类。
     # temporary_functions.compute_edge_point_distance() # 计算对于std points，边界上的点到每个std point的距离。
     # temporary_functions.change_punctuation_weight("8_28_coarse_test_from_gpt_0-108.csv") # 用于强制将weight文件中的标点权重修改为1。
+    # temporary_functions.output_bias_log("test_017") # 用于批量读取log文件并输出bias。
+    # temporary_functions.retrieve_best_H_rectangle_features() # 把每个样本的calibration对应的单应性矩阵找出，并计算其特征。
 
     # analyse_reading_data.render_point_density_hist()
     # analyse_reading_data.match_manual_weight_and_gaze_density()
     # analyse_reading_data.down_sample_reading()
     # analyse_reading_data.add_all_reading("8_22_fine_attention_second_from_gpt_90-94.csv")
 
-    # analyse_calibration_data.visualize_original_cali_centroids(f"data/back_up_gaze_data/{configs.round}/reformat_data/20230724_101920/calibration.csv")
+    # analyse_calibration_data.visualize_original_cali_centroids(f"data/back_up_gaze_data/{configs.round}/reformat_data/20230725_151958/calibration.csv")
 
     # get_token_info()
     # get_density()
@@ -61,7 +63,6 @@ if __name__ == '__main__':
     # talk_with_GPT.get_gpt_prediction("coarse")
 
     # get_weight_of_text("8_28_coarse_test_from_gpt_0-108.csv") # 用于获取text_unit的的结构weight和gpt语义weight。
-
 
     # test_pull_gaze_trace.pull_test()
     test_match_with_density.match_with_density()

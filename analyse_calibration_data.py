@@ -65,7 +65,8 @@ def visualize_original_cali_centroids(file_path):
     df_cali = pd.read_csv(file_path)
     centroid_list = compute_centroids(df_cali)
     list_std_cali = create_standard_calibration_points()
-    _, centroid_list_after_homography = apply_homography_transform(centroid_list, list_std_cali)
+    H, centroid_list_after_homography = apply_homography_transform(centroid_list, list_std_cali)
+    print(H)
 
     fig, ax = plt.subplots(figsize=(16, 9))
     ax.set_aspect('equal')

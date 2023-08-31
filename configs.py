@@ -32,25 +32,38 @@ temp_token_debug_num = 23
 punctuation_list = {'\'', '\"', '!', '?', '.', '/', '\\', '-', '，', ':', '：', '。', '……', '！', '？', '——', '（', '）', '【', '】', '“', '”', '’', '‘', '：', '；', '《', '》', '、', '—', '～', '·', '「', '」', '『', '』'}
 
 # 空间对齐相关。
-training_number_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] # FIXME 选择需要的训练数据。
-bool_log = False
-bool_save_pic = False
-test_str = "test_014"
+training_number_list = [i for i in range(0, 25)] # FIXME 选择需要的训练数据。
+bool_log = True
+bool_save_pic = True
+test_str = "test_019"
 empty_text_unit_penalty = -40
 punctuation_text_unit_penalty = -20
-far_from_text_unit_penalty = 180
-dist_threshold_from_std = 32
+text_unit_density_threshold_for_empty = 5 # 空字符不惩罚的threshold。
+
+far_from_text_unit_penalty = 50 # 距离过远的惩罚
+dist_threshold_from_std = 32 # 距离过远的threshold
+
 H_rotation_penalty = 100
 H_scale_penalty = 500
 H_shear_penalty = 500
 H_projection_penalty = 500
 H_space_ratio_penalty = 1000
-text_unit_density_threshold_for_empty = 6
-first_row_text_penalty = 5
+
+first_row_text_penalty = 5 # 首行文字未读的惩罚。
+
+coeff_semantic_before_output = 1 # 在输出structural_distance_matrix和gpt_distance_matrix之前添加一个系数，使其与absolute distance能够更好地“协作”。
 coeff_gpt_for_non_structural = 0
-coeff_gpt = 0.0001
-coeff_structural = 0.9999
+coeff_gpt = 0.9999
+coeff_structural = 0.0001
+
 generic_population_size = 500
 generic_population_generation = 3
 em_iteration = 15
 
+bool_blur_weight = False
+# gaussian_filter = [[0.02919022, 0.04812654, 0.02919022],
+#                    [0.21568818, 0.35560969, 0.21568818],
+#                    [0.02919022, 0.04812654, 0.02919022]]
+gaussian_filter = [[0.01772047, 0.07106603, 0.01772047],
+                   [0.13093757, 0.52511091, 0.13093757],
+                   [0.01772047, 0.07106603, 0.01772047]]

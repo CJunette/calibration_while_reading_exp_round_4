@@ -535,8 +535,8 @@ def retrieve_best_H_rectangle_features():
     file_path = f"data/modified_gaze_data/{configs.round}/{configs.device}/"
     file_list = os.listdir(file_path)
 
-    str_list = []
-
+    feature_list = []
+    H_list = []
     for file_index in range(len(file_list)):
         file_name = f"{file_path}{file_list[file_index]}/calibration.csv"
 
@@ -576,12 +576,13 @@ def retrieve_best_H_rectangle_features():
 
         cv2ms = cv2.matchShapes(points1.reshape(-1, 1, 2), points2.reshape(-1, 1, 2), 1, 0.0)
 
-        str_list.append(
-            f"name: {file_list[file_index]}\n"
-            f"H: {H}\n"
-            f"space_ratio: {space_ratio:.5f}, transform_distance: {transform_distance:.5f}, cv2ms: {cv2ms:.5f}, "
+        feature_list.append(
+            f"name: {file_list[file_index]}, space_ratio: {space_ratio:.5f}, transform_distance: {transform_distance:.5f}, cv2ms: {cv2ms:.5f}, "
             f"scale_up: {scale_up: .5f}, scale_down: {scale_down: .5f}, scale_left: {scale_left: .5f}, scale_right: {scale_right: .5f}, "
             f"angle_left_up_ratio: {angle_left_up_ratio:.5f}, angle_left_down_ratio: {angle_left_down_ratio:.5f}, angle_right_up_ratio: {angle_right_up_ratio:.5f}, angle_right_down_ratio: {angle_right_down_ratio:.5f}")
+        H_list.append(H)
 
-    for feature_str in str_list:
+    for H in H_list:
+        print(H)
+    for feature_str in feature_list:
         print(feature_str)
