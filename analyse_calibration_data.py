@@ -1,10 +1,12 @@
+import os
+
 import cv2
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
 import configs
-
+import read_files
 
 COLOR_LIST_1 = ["red", "blue", "green", "slateblue", "purple", "orange", "pink", "brown", "gray", "olive", "cyan", "magenta"]
 COLOR_LIST_2 = ["lime", "teal", "aqua", "maroon", "navy", "gold", "darkred", "darkblue", "darkgreen", "thistle", "violet", "burlywood"]
@@ -100,3 +102,18 @@ def compute_bias_between_cali_centroids_and_std_points(cali_points_1d, std_point
     bias = np.mean(np.sqrt(np.sum(np.square(transformed_cali_points_1d - std_points_1d), axis=1)))
     return bias
 
+
+def show_bias_without_transform():
+    std_points = create_standard_calibration_points()
+
+    bias_list = []
+    cali_list = read_files.read_calibration_data()
+    for file_index in range(len(cali_list)):
+        centroids = compute_centroids(cali_list[file_index])
+        bias = compute_bias_between_cali_centroids_and_std_points(np.array(centroids).reshape(-1, 2), np.array(std_points).reshape(-1, 2), np.eye(3))
+        bias_list.append(bias)
+
+    file_path = f"data/original_gaze_data/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path)
+    for file_index in range(len(cali_list)):
+        print(f"{file_list[file_index]}, {bias_list[file_index]}")
