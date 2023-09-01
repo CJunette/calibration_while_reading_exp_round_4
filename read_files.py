@@ -220,3 +220,27 @@ def read_calibration_data():
         df_cali = pd.read_csv(calibration_file_name, encoding="utf-8_sig")
         cali_list.append(df_cali)
     return cali_list
+
+
+def read_quality_prediction():
+    file_path_prefix = f"data/reading_quality/{configs.round}/{configs.device}/"
+    file_list = os.listdir(file_path_prefix)
+
+    quality_list = []
+    for file_index in range(len(file_list)):
+        quality_file_name = f"{file_path_prefix}{file_list[file_index]}/data_extracted.json"
+        quality_file = open(quality_file_name, "r")
+        quality_data = json.load(quality_file)
+        del quality_data["baseline_bias"]
+        quality_data = {int(k): v for k, v in quality_data.items()}
+        key_list = []
+        prediction_list = []
+        for key, value in quality_data.items():
+            key_list.append(key)
+            prediction_list.append(value["label_pred"])
+        df = pd.DataFrame({"para_id": key_list, "prediction": prediction_list})
+        df.sort_values(by="para_id", inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        quality_list.append(df)
+
+    return quality_list
